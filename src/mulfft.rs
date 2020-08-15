@@ -51,6 +51,39 @@ pub fn twist_ifft_1d(input: &mut AlignedVec<c64>, twist: &AlignedVec<c64>) -> Ve
     return res;
 }
 
+pub fn polynomial_mul(a: &Vec<i32>, b: &Vec<i32>, twist: &AlignedVec<c64>) -> Vec<u32> {
+    let a_f64 = a.iter().map(|&e| e as f64).collect();
+    let b_f64 = b.iter().map(|&e| e as f64).collect();
+    let a_fft = twist_fft_1d(&a_f64, twist);
+    let b_fft = twist_fft_1d(&b_f64, twist);
+
+    let n = a_fft.len();
+    let mut mul:AlignedVec<c64> = AlignedVec::new(n);
+    for i in 0..n {
+        mul[i] = a_fft[i] * b_fft[i];
+    }
+
+    let res = twist_ifft_1d(&mut mul, twist);
+    return res.iter().map(|&e| ((e.round() as u64) % 2u64.pow(32)) as u32).collect();
+}
+
+//pub fn polynomial_mul_lv2(a: &Vec<i64>, b: &Vec<i64>, twist: &AlignedVec<c64>) -> Vec<u64> {
+//    let a_f64 = a.iter().map(|&e| e as f64).collect();
+//    let b_f64 = b.iter().map(|&e| e as f64).collect();
+//    let a_fft = twist_fft_1d(&a_f64, twist);
+//    let b_fft = twist_fft_1d(&b_f64, twist);
+//
+//    let n = a_fft.len();
+//    let mut mul:AlignedVec<c64> = AlignedVec::new(n);
+//    for i in 0..n {
+//        mul[i] = a_fft[i] * b_fft[i];
+//    }
+//
+//    let res = twist_ifft_1d(&mut mul, twist);
+//    return res.iter().map(|&e| ((e.round() as u128) % 2u128.pow(64)) as u64).collect();
+//
+//}
+
 #[cfg(test)]
 mod tests {
     use crate::mulfft::*;
@@ -67,10 +100,30 @@ mod tests {
             sum[i] = a_fft[i] + b_fft[i];
         }
         let res = twist_ifft_1d(&mut sum, &twist);
-        println!("{:?}", res);
         assert!(res[0] - 1.0 < 1e-10);
         assert!(res[1] - 2.0 < 1e-10);
         assert!(res[2] - 3.0 < 1e-10);
         assert!(res[3] - 4.0 < 1e-10);
     }
+
+    #[test]
+    fn fft_poly_mul(){
+        let a:Vec<i32> = [-2, -1, 0, 1].to_vec();
+        let b:Vec<i32> = [3, 4, 5, 6].to_vec();
+        let twist = twist_gen(4);
+        let res = polynomial_mul(&a, &b, &twist);
+
+        assert_eq!(res, vec![4294967292, 4294967280, 4294967276, 4294967282])
+    }
+
+    //#[test]
+    //fn fft_poly_mul_lv2(){
+    //    let a:Vec<i64> = [-2, -1, 0, 1].to_vec();
+    //    let b:Vec<i64> = [3, 4, 5, 6].to_vec();
+    //    let twist = twist_gen(4);
+    //    let res = polynomial_mul_lv2(&a, &b, &twist);
+
+    //    println!("{:?}", res);
+    //    assert_eq!(res, vec![4294967292, 4294967280, 4294967276, 4294967282])
+    //}
 }
