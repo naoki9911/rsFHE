@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 fftw = {version = "0.6.2"}
+rand = "0.7.3"
+rand_distr = "0.3.0"
