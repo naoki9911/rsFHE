@@ -10,7 +10,7 @@ pub fn tlweSymEncrypt(p:f64, alpha:f64, key:&Vec<u32>) -> Vec<u32> {
         inner_product = inner_product.wrapping_add(key[i] * rand_u32);
         a.push(rand_u32);
     }
-    let mut b = utils::gussian_32bit(utils::f64_to_u32_torus(p), alpha, 1);
+    let b = utils::gussian_32bit(utils::f64_to_u32_torus(p), alpha, 1);
     a.push(inner_product.wrapping_add(b[0]));
     return a;
 }
@@ -59,7 +59,7 @@ mod tests {
             let plain = tlweSymDecrypt(&secret, &key) as u8;
             let plain_dirty = tlweSymDecrypt(&secret, &key_dirty) as u8;
             assert_eq!(plain, sample);
-            if plain == plain_dirty {
+            if plain != plain_dirty {
                 correct += 1;
             }
         }
