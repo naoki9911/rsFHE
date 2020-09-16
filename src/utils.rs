@@ -11,7 +11,7 @@ pub fn gussian_32bit(mu: u32, alpha: f64, size:usize) -> Vec<u32> {
     let mut vec:Vec<u32> = Vec::new();
     for i in 0..size {
         let sample = normal.sample(&mut rand::thread_rng());
-        vec.push(f64_to_u32_torus(sample) + mu);
+        vec.push(f64_to_u32_torus(sample).wrapping_add(mu));
     }
 
     return vec;
