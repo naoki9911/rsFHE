@@ -1,7 +1,7 @@
 use rand::thread_rng;
 use rand_distr::{Normal, Distribution};
 
-pub fn double_to_torus_32bit(d: f64) -> u32 {
+pub fn f64_to_u32_torus(d: f64) -> u32 {
     let torus = (d%1.0) as f64 * 2u64.pow(32) as f64;
     return torus as u32;
 }
@@ -11,7 +11,7 @@ pub fn gussian_32bit(mu: u32, alpha: f64, size:usize) -> Vec<u32> {
     let mut vec:Vec<u32> = Vec::new();
     for i in 0..size {
         let sample = normal.sample(&mut rand::thread_rng());
-        vec.push(double_to_torus_32bit(sample) + mu);
+        vec.push(f64_to_u32_torus(sample) + mu);
     }
 
     return vec;
@@ -24,10 +24,10 @@ mod tests {
 
     #[test]
     fn test_double_to_torust_32bit() {
-        let torus = double_to_torus_32bit(3.141592);
+        let torus = f64_to_u32_torus(3.141592);
         assert_eq!(torus, 608133009);
 
-        let torus2 = double_to_torus_32bit(2.71828);
+        let torus2 = f64_to_u32_torus(2.71828);
         assert_eq!(torus2, 3084989109);
     }
 
