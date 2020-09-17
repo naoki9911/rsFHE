@@ -10,7 +10,8 @@ pub fn tlweSymEncrypt(p:f64, alpha:f64, key:&Vec<u32>) -> Vec<u32> {
         inner_product = inner_product.wrapping_add(key[i] * rand_u32);
         a.push(rand_u32);
     }
-    let b = utils::gussian_32bit(utils::f64_to_u32_torus(p), alpha, 1);
+    let mu = utils::f64_to_u32_torus(&vec![p]);
+    let b = utils::gussian_32bit(&mu, alpha, 1);
     a.push(inner_product.wrapping_add(b[0]));
     return a;
 }
