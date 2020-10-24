@@ -1,38 +1,62 @@
-pub fn decomposition(trlwe:(&Vec<u32>, &Vec<u32>)) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
-    let offset = gen_offset();
-    let Bgbit:u32 = 10;
-    let halfBg:u32 = 1 << (Bgbit - 1);
-    let mask:u32 = (1 << Bgbit) - 1;
-    let N:u32 = 500;
+//pub fn decomposition(trlwe:(&Vec<u32>, &Vec<u32>)) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
+//    let offset = gen_offset();
+//    println!("{}", offset);
+//    let Bgbit:u32 = 10;
+//    let halfBg:u32 = 1 << (Bgbit - 1);
+//    let mask:u32 = (1 << Bgbit) - 1;
+//    let N:u32 = 500;
+//
+//    let mut decomp0:Vec<u32> = Vec::new();
+//    let mut decomp1:Vec<u32> = Vec::new();
+//    let mut decomp2:Vec<u32> = Vec::new();
+//    let mut decomp3:Vec<u32> = Vec::new();
+//
+//    for i in 0..N {
+//        let temp0 = trlwe.0[i as usize].wrapping_add(offset);
+//        let temp1 = trlwe.1[i as usize].wrapping_add(offset);
+//
+//        let mut tmp:u32 = ((temp0 >> (32 - (0 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
+//        decomp0.push(tmp);
+//        tmp = ((temp0 >> (32 - (1 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
+//        decomp1.push(tmp);
+//        tmp = ((temp1 >> (32 - (0 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
+//        decomp2.push(tmp);
+//        tmp = ((temp1 >> (32 - (1 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
+//        decomp3.push(tmp);
+//    }
+//
+//    return (decomp0, decomp1, decomp2, decomp3);
+//}
 
+pub fn decomposition(a:&Vec<u32>) -> (Vec<u32>, Vec<u32>) {
+    let mut offset = 0;
+    let Bgbit:u32 = 10;
+    let Bg:u32 = 1 << Bgbit;
+    let N:u32 = 500;
+    let offset = gen_offset();
+
+    let mut a_tilda:Vec<u32> = Vec::new();
     let mut decomp0:Vec<u32> = Vec::new();
     let mut decomp1:Vec<u32> = Vec::new();
-    let mut decomp2:Vec<u32> = Vec::new();
-    let mut decomp3:Vec<u32> = Vec::new();
 
     for i in 0..N {
-        let temp0 = trlwe.0[i as usize].wrapping_add(offset);
-        let temp1 = trlwe.1[i as usize].wrapping_add(offset);
-
-        let mut tmp:u32 = ((temp0 >> (32 - (0 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-        decomp0.push(tmp);
-        tmp = ((temp0 >> (32 - (1 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-        decomp1.push(tmp);
-        tmp = ((temp1 >> (32 - (0 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-        decomp2.push(tmp);
-        tmp = ((temp1 >> (32 - (1 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-        decomp3.push(tmp);
+        a_tilda.push(a[i as usize].wrapping_add(offset));
     }
 
-    return (decomp0, decomp1, decomp2, decomp3);
+    for j in 0..N {
+        let tmp0 = ((a_tilda[j as usize] >> (32-Bgbit*1))&(Bg-1))&(Bg-1) - Bg/2;
+        decomp0.push(tmp0);
+        let tmp1 = ((a_tilda[j as usize] >> (32-Bgbit*2))&(Bg-1))&(Bg-1) - Bg/2;
+        decomp1.push(tmp1);
+    }
+
+    return (decomp0, decomp1);
 }
 
 pub fn gen_offset() -> u32 {
     let mut offset:u32 = 0;
     let Bgbit:u32 = 10;
     let Bg:u32 = 1 << Bgbit;
-    let Bgbitbar:u32 = 9;
-    let Bgbar:u32 = 1 << Bgbitbar;
 
     for i in 0..2 {
         offset = offset.wrapping_add(Bg / 2 * (1 << (32 - (i + 1)*Bgbit)));
@@ -88,14 +112,15 @@ mod tests {
             }
 
             let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha, &key, &twist);
-            let c_decomp = decomposition((&c.0, &c.1));
+            let c_decomp_1 = decomposition((&c.0));
+            let c_decomp_2 = decomposition((&c.1));
             let h_u32 = utils::f64_to_u32_torus(&h);
             println!("{} {}", h_u32[0], h_u32[1]);
             let mut rec0:Vec<u32> = Vec::new();
             let mut rec1:Vec<u32> = Vec::new();
             for j in 0..500 {
-                rec0.push((c_decomp.0[i].wrapping_mul(h_u32[0])).wrapping_add(c_decomp.1[i].wrapping_mul(h_u32[1])));
-                rec1.push((c_decomp.2[i].wrapping_mul(h_u32[0])).wrapping_add(c_decomp.3[i].wrapping_mul(h_u32[1])));
+                rec0.push((c_decomp_1.0[i].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_1.1[i].wrapping_mul(h_u32[1])));
+                rec1.push((c_decomp_2.0[i].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_2.1[i].wrapping_mul(h_u32[1])));
             }
 
             let dec = trlwe::trlweSymDecrypt((&rec0, &rec1), &key, &twist);
