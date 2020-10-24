@@ -32,7 +32,7 @@ pub fn decomposition(a:&Vec<u32>) -> (Vec<u32>, Vec<u32>) {
     let mut offset = 0;
     let Bgbit:u32 = 10;
     let Bg:u32 = 1 << Bgbit;
-    let N:u32 = 500;
+    let N:u32 = 1024;
     let offset = gen_offset();
 
     let mut a_tilda:Vec<u32> = Vec::new();
@@ -44,9 +44,9 @@ pub fn decomposition(a:&Vec<u32>) -> (Vec<u32>, Vec<u32>) {
     }
 
     for j in 0..N {
-        let tmp0 = ((a_tilda[j as usize] >> (32-Bgbit*1))&(Bg-1))&(Bg-1) - Bg/2;
+        let tmp0 = ((a_tilda[j as usize] >> (32-Bgbit*1))&(Bg-1)).wrapping_sub(Bg/2);
         decomp0.push(tmp0);
-        let tmp1 = ((a_tilda[j as usize] >> (32-Bgbit*2))&(Bg-1))&(Bg-1) - Bg/2;
+        let tmp1 = ((a_tilda[j as usize] >> (32-Bgbit*2))&(Bg-1)).wrapping_sub(Bg/2);
         decomp1.push(tmp1);
     }
 
@@ -77,16 +77,16 @@ mod tests {
     fn test_decomposition(){
         let mut rng = rand::thread_rng();
 
-        // Generate 500bits secret key
+        // Generate 1024bits secret key
         let mut key:Vec<u32> = Vec::new();
         let mut key_dirty:Vec<u32> = Vec::new();
-        for i in 0..500 {
+        for i in 0..1024 {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let alpha:f64 = 2.0f64.powf(-15.0);
-        let twist = mulfft::twist_gen(500);
+        let alpha:f64 = 2.0f64.powf(-25.0);
+        let twist = mulfft::twist_gen(1024);
         let mut h:Vec<f64> = Vec::new();
         let try_num = 1000;
 
@@ -101,7 +101,7 @@ mod tests {
             let mut plain_text_enc:Vec<f64> = Vec::new();
             let mut plain_text:Vec<u32> = Vec::new();
 
-            for j in 0..500 {
+            for j in 0..1024 {
                 let sample:u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -111,21 +111,23 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
+
             let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha, &key, &twist);
+            assert_eq!(c.0.len(), 1024);
+            assert_eq!(c.1.len(), 1024);
             let c_decomp_1 = decomposition((&c.0));
             let c_decomp_2 = decomposition((&c.1));
             let h_u32 = utils::f64_to_u32_torus(&h);
-            println!("{} {}", h_u32[0], h_u32[1]);
             let mut rec0:Vec<u32> = Vec::new();
             let mut rec1:Vec<u32> = Vec::new();
-            for j in 0..500 {
-                rec0.push((c_decomp_1.0[i].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_1.1[i].wrapping_mul(h_u32[1])));
-                rec1.push((c_decomp_2.0[i].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_2.1[i].wrapping_mul(h_u32[1])));
+            for j in 0..1024 {
+                rec0.push((c_decomp_1.0[j].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_1.1[j].wrapping_mul(h_u32[1])));
+                rec1.push((c_decomp_2.0[j].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_2.1[j].wrapping_mul(h_u32[1])));
             }
 
             let dec = trlwe::trlweSymDecrypt((&rec0, &rec1), &key, &twist);
 
-            for j in 0..500 {
+            for j in 0..1024 {
                 assert_eq!(plain_text[j], dec[j]);
                 //if plain_text[j] != dec_dirty[j] {
                 //}

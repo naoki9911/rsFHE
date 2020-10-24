@@ -46,24 +46,24 @@ mod tests {
     fn test_trlwe_enc_and_dec(){
         let mut rng = rand::thread_rng();
 
-        // Generate 500bits secret key
+        // Generate 1024bits secret key
         let mut key:Vec<u32> = Vec::new();
         let mut key_dirty:Vec<u32> = Vec::new();
-        for i in 0..500 {
+        for i in 0..1024 {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let alpha:f64 = 2.0f64.powf(-15.0);
-        let twist = mulfft::twist_gen(500);
+        let alpha:f64 = 2.0f64.powf(-25.0);
+        let twist = mulfft::twist_gen(1024);
         let mut correct = 0;
-        let try_num = 10000;
+        let try_num = 500;
 
         for i in 0..try_num {
             let mut plain_text_enc:Vec<f64> = Vec::new();
             let mut plain_text:Vec<u32> = Vec::new();
 
-            for j in 0..500 {
+            for j in 0..1024 {
                 let sample:u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -77,7 +77,7 @@ mod tests {
             let dec = trlweSymDecrypt((&c.0, &c.1), &key, &twist);
             let dec_dirty = trlweSymDecrypt((&c.0, &c.1), &key_dirty, &twist);
 
-            for j in 0..500 {
+            for j in 0..1024 {
                 assert_eq!(plain_text[j], dec[j]);
                 if plain_text[j] != dec_dirty[j] {
                     correct += 1;
@@ -85,7 +85,7 @@ mod tests {
             }
         }
 
-        let probability = correct as f64 / (try_num * 500) as f64;
-        assert!(probability - 0.50 < 0.01);
+        let probability = correct as f64 / (try_num * 1024) as f64;
+        assert!(probability - 0.50 < 0.1);
     }
 }
