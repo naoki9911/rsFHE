@@ -67,6 +67,42 @@ pub fn polynomial_mul(a: &Vec<i32>, b: &Vec<i32>, twist: &AlignedVec<c64>) -> Ve
     return res.iter().map(|&e| ((e.round() as u64) % 2u64.pow(32)) as u32).collect();
 }
 
+pub fn polynomial_mul_u32(a: &Vec<u32>, b: &Vec<u32>, twist: &AlignedVec<c64>) -> Vec<u32> {
+    let a_f64 = a.iter().map(|&e| e as f64).collect();
+    let b_f64 = b.iter().map(|&e| e as f64).collect();
+    let a_fft = twist_fft_1d(&a_f64, twist);
+    let b_fft = twist_fft_1d(&b_f64, twist);
+    let n = a_fft.len();
+    let mut mul:AlignedVec<c64> = AlignedVec::new(n);
+    for i in 0..n {
+        mul[i] = a_fft[i] * b_fft[i];
+    }
+
+    let res = twist_ifft_1d(&mut mul, twist);
+    return res.iter().map(|&e| ((e.round() as u64) % 2u64.pow(32)) as u32).collect();
+}
+
+pub fn poly_mul(a: &Vec<u32>, b: &Vec<u32>) -> Vec<u32> {
+    let N = a.len();
+    let mut res:Vec<u32> = Vec::new();
+
+    for i in 0..N {
+        res.push(0);
+    }
+
+    for i in 0..N {
+        for j in 0..N {
+            if(i + j < N) {
+                res[i + j] = res[i + j].wrapping_add(a[i].wrapping_mul(b[j]));
+            }else{
+                res[i + j - N] = res[i + j - N].wrapping_sub(a[i].wrapping_mul(b[j]));
+            }
+        }
+    }
+
+    return res;
+}
+
 //pub fn polynomial_mul_lv2(a: &Vec<i64>, b: &Vec<i64>, twist: &AlignedVec<c64>) -> Vec<u64> {
 //    let a_f64 = a.iter().map(|&e| e as f64).collect();
 //    let b_f64 = b.iter().map(|&e| e as f64).collect();

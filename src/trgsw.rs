@@ -1,3 +1,10 @@
+use fftw::array::AlignedVec;
+use fftw::types::*;
+use std::num::Wrapping;
+use crate::trlwe;
+use crate::utils;
+use crate::mulfft;
+
 //pub fn decomposition(trlwe:(&Vec<u32>, &Vec<u32>)) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
 //    let offset = gen_offset();
 //    println!("{}", offset);
@@ -28,42 +35,133 @@
 //    return (decomp0, decomp1, decomp2, decomp3);
 //}
 
-pub fn decomposition(a:&Vec<u32>) -> (Vec<u32>, Vec<u32>) {
-    let mut offset = 0;
-    let Bgbit:u32 = 10;
-    let Bg:u32 = 1 << Bgbit;
-    let N:u32 = 1024;
+pub struct TRGSW {
+    trlwe: Vec<trlwe::TRLWE>,
+}
+
+const fn N() -> usize {
+    1024
+}
+
+const fn BgBit() -> u32 {
+    6
+}
+
+const fn Bg() -> u32 {
+    1 << BgBit()
+}
+
+const fn l() -> usize {
+    3
+}
+
+const fn alpha() -> f64 {
+    2.98023223876953125e-08
+}
+
+pub fn trgswSymEncrypt(p:u32, alpha:f64, key:&Vec<u32>, twist: &AlignedVec<c64>) -> TRGSW
+{
+    let mut p_f64:Vec<f64> = Vec::new();
+    for i in 0..l() {
+        let BgM:f64 = (Bg() as f64).powf(((1 + i) as f64) * -1.0);
+        p_f64.push(BgM);
+    }
+    let p_torus = utils::f64_to_u32_torus(&p_f64);
+
+    let mut plain_zero:Vec<f64> = Vec::new();
+    for i in 0..N() {
+        plain_zero.push(-0.125);
+    }
+
+    let mut trgsw = TRGSW {
+        trlwe : Vec::new()
+    };
+
+    for i in 0..l()*2 {
+        trgsw.trlwe.push(trlwe::trlweSymEncrypt(&plain_zero, alpha, &key, &twist));
+    }
+
+    for i in 0..l(){
+        trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
+        trgsw.trlwe[i+l()].b[0] = trgsw.trlwe[i+l()].b[0].wrapping_add(p * p_torus[i]);
+    }
+    return trgsw;
+}
+
+pub fn external_product(trgsw: &TRGSW, trlwe: &trlwe::TRLWE, twist: &AlignedVec<c64>) -> trlwe::TRLWE
+{
+    let dec_a = decomposition(&trlwe.a);
+    let dec_b = decomposition(&trlwe.b);
+    let mut res:trlwe::TRLWE = trlwe::TRLWE {
+        a:Vec::new(),
+        b:Vec::new()
+    };
+
+    for i in 0..N() {
+        res.a.push(0);
+        res.b.push(0);
+    }
+
+    for i in 0..l() {
+        //let tmp = mulfft::polynomial_mul_u32(&dec_a[i], &trgsw.trlwe[i].a, twist);
+        let tmp = mulfft::poly_mul(&dec_a[i], &trgsw.trlwe[i].a);
+        for j in 0..N() {
+            res.a[j] = res.a[j].wrapping_add(tmp[j]);
+        }
+
+        //let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i+l()].a, twist);
+        let tmp = mulfft::poly_mul(&dec_b[i], &trgsw.trlwe[i+l()].a);
+        for j in 0..N() {
+            res.a[j] = res.a[j].wrapping_add(tmp[j]);
+        }
+
+        //let tmp = mulfft::polynomial_mul_u32(&dec_a[i], &trgsw.trlwe[i].b, twist);
+        let tmp = mulfft::poly_mul(&dec_a[i], &trgsw.trlwe[i].b);
+        for j in 0..N() {
+            res.b[j] = res.b[j].wrapping_add(tmp[j]);
+        }
+
+        //let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i+l()].b, twist);
+        let tmp = mulfft::poly_mul(&dec_b[i], &trgsw.trlwe[i+l()].b);
+        for j in 0..N() {
+            res.b[j] = res.b[j].wrapping_add(tmp[j]);
+        }
+    }
+
+    return res;
+}
+
+pub fn decomposition(a:&Vec<u32>) -> Vec<Vec<u32>> {
     let offset = gen_offset();
 
     let mut a_tilda:Vec<u32> = Vec::new();
-    let mut decomp0:Vec<u32> = Vec::new();
-    let mut decomp1:Vec<u32> = Vec::new();
+    let mut res:Vec<Vec<u32>> = Vec::new();
 
-    for i in 0..N {
+    for i in 0..N() {
         a_tilda.push(a[i as usize].wrapping_add(offset));
     }
 
-    for j in 0..N {
-        let tmp0 = ((a_tilda[j as usize] >> (32-Bgbit*1))&(Bg-1)).wrapping_sub(Bg/2);
-        decomp0.push(tmp0);
-        let tmp1 = ((a_tilda[j as usize] >> (32-Bgbit*2))&(Bg-1)).wrapping_sub(Bg/2);
-        decomp1.push(tmp1);
+    for i in 1..(l()+1) as u32 {
+        res.push(Vec::new());
+        for j in 0..N() {
+            let tmp = ((a_tilda[j as usize] >> (32-BgBit()*i))&(Bg()-1)).wrapping_sub(Bg()/2);
+            res[(i-1) as usize].push(tmp)
+        }
     }
 
-    return (decomp0, decomp1);
+    return res;
 }
 
 pub fn gen_offset() -> u32 {
     let mut offset:u32 = 0;
-    let Bgbit:u32 = 10;
-    let Bg:u32 = 1 << Bgbit;
 
-    for i in 0..2 {
-        offset = offset.wrapping_add(Bg / 2 * (1 << (32 - (i + 1)*Bgbit)));
+    for i in 0..(l() as u32) {
+        offset = offset.wrapping_add(Bg() / 2 * (1 << (32 - (i + 1)*BgBit())));
     }
 
     return offset;
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -79,21 +177,16 @@ mod tests {
 
         // Generate 1024bits secret key
         let mut key:Vec<u32> = Vec::new();
-        let mut key_dirty:Vec<u32> = Vec::new();
-        for i in 0..1024 {
+        for i in 0..N() {
             key.push((rng.gen::<u8>() % 2) as u32);
-            key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let alpha:f64 = 2.0f64.powf(-25.0);
-        let twist = mulfft::twist_gen(1024);
+        let twist = mulfft::twist_gen(N());
         let mut h:Vec<f64> = Vec::new();
         let try_num = 1000;
 
-        let Bgbit:u32 = 10;
-        let Bg:u32 = 1 << Bgbit;
-        for i in 0..2 {
-            let mut tmp = (Bg as f64).powf(-(i+1) as f64);
+        for i in 1..l()+1 {
+            let tmp = (Bg() as f64).powf(-(i as f64));
             h.push(tmp);
         }
 
@@ -101,7 +194,7 @@ mod tests {
             let mut plain_text_enc:Vec<f64> = Vec::new();
             let mut plain_text:Vec<u32> = Vec::new();
 
-            for j in 0..1024 {
+            for j in 0..N() {
                 let sample:u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -112,25 +205,68 @@ mod tests {
             }
 
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha, &key, &twist);
-            assert_eq!(c.0.len(), 1024);
-            assert_eq!(c.1.len(), 1024);
-            let c_decomp_1 = decomposition((&c.0));
-            let c_decomp_2 = decomposition((&c.1));
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha(), &key, &twist);
+            let c_decomp_1 = decomposition(&c.a);
+            let c_decomp_2 = decomposition(&c.b);
             let h_u32 = utils::f64_to_u32_torus(&h);
-            let mut rec0:Vec<u32> = Vec::new();
-            let mut rec1:Vec<u32> = Vec::new();
-            for j in 0..1024 {
-                rec0.push((c_decomp_1.0[j].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_1.1[j].wrapping_mul(h_u32[1])));
-                rec1.push((c_decomp_2.0[j].wrapping_mul(h_u32[0])).wrapping_add(c_decomp_2.1[j].wrapping_mul(h_u32[1])));
+            let mut res = trlwe::TRLWE {
+                a: Vec::new(),
+                b: Vec::new()
+            };
+            for j in 0..N() {
+                let mut tmp0:u32 = 0;
+                let mut tmp1:u32 = 0;
+                for k in 0..l() {
+                    tmp0 = tmp0.wrapping_add(c_decomp_1[k][j].wrapping_mul(h_u32[k]));
+                    tmp1 = tmp1.wrapping_add(c_decomp_2[k][j].wrapping_mul(h_u32[k]));
+                }
+                res.a.push(tmp0);
+                res.b.push(tmp1);
             }
 
-            let dec = trlwe::trlweSymDecrypt((&rec0, &rec1), &key, &twist);
+            let dec = trlwe::trlweSymDecrypt(&res, &key, &twist);
 
-            for j in 0..1024 {
+            for j in 0..N() {
                 assert_eq!(plain_text[j], dec[j]);
-                //if plain_text[j] != dec_dirty[j] {
-                //}
+            }
+        }
+    }
+
+    #[test]
+    fn test_external_product(){
+        let mut rng = rand::thread_rng();
+
+        // Generate 1024bits secret key
+        let mut key:Vec<u32> = Vec::new();
+        for i in 0..N() {
+            key.push((rng.gen::<u8>() % 2) as u32);
+        }
+
+        let twist = mulfft::twist_gen(N());
+        let try_num = 10;
+
+        for i in 0..try_num {
+            let mut plain_text_enc:Vec<f64> = Vec::new();
+            let mut plain_text:Vec<u32> = Vec::new();
+
+            for j in 0..N() {
+                let sample:u32 = rng.gen::<u32>() % 2;
+                let mut mu = 0.125;
+                if sample == 0 {
+                   mu = -0.125; 
+                }
+                plain_text.push(sample);
+                plain_text_enc.push(mu);
+            }
+
+
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha(), &key, &twist);
+            let trgsw_true = trgswSymEncrypt(1, alpha(), &key, &twist);
+            let ext_c = external_product(&trgsw_true, &c, &twist);
+            let dec = trlwe::trlweSymDecrypt(&ext_c, &key, &twist);
+
+            for j in 0..N() {
+                assert_eq!(plain_text[j], dec[j]);
             }
         }
     }
