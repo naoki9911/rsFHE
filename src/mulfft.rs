@@ -2,6 +2,7 @@ use fftw::array::AlignedVec;
 use fftw::types::*;
 use fftw::plan::*;
 use std::f64::consts::PI;
+use rand::Rng;
 
 pub fn twist_gen(N: usize) -> AlignedVec<c64> {
     let n:usize = N / 2;
@@ -68,18 +69,9 @@ pub fn polynomial_mul(a: &Vec<i32>, b: &Vec<i32>, twist: &AlignedVec<c64>) -> Ve
 }
 
 pub fn polynomial_mul_u32(a: &Vec<u32>, b: &Vec<u32>, twist: &AlignedVec<c64>) -> Vec<u32> {
-    let a_f64 = a.iter().map(|&e| e as f64).collect();
-    let b_f64 = b.iter().map(|&e| e as f64).collect();
-    let a_fft = twist_fft_1d(&a_f64, twist);
-    let b_fft = twist_fft_1d(&b_f64, twist);
-    let n = a_fft.len();
-    let mut mul:AlignedVec<c64> = AlignedVec::new(n);
-    for i in 0..n {
-        mul[i] = a_fft[i] * b_fft[i];
-    }
-
-    let res = twist_ifft_1d(&mut mul, twist);
-    return res.iter().map(|&e| ((e.round() as u64) % 2u64.pow(32)) as u32).collect();
+    let a_i32 = a.iter().map(|&e| e as i32).collect();
+    let b_i32 = b.iter().map(|&e| e as i32).collect();
+    return polynomial_mul(&a_i32, &b_i32, twist);
 }
 
 pub fn poly_mul(a: &Vec<u32>, b: &Vec<u32>) -> Vec<u32> {
@@ -150,6 +142,24 @@ mod tests {
         let res = polynomial_mul(&a, &b, &twist);
 
         assert_eq!(res, vec![4294967292, 4294967280, 4294967276, 4294967282])
+    }
+    
+    #[test]
+    fn fft_ifft() {
+        let mut a:Vec<u32> = Vec::new();
+        let mut rng = rand::thread_rng();
+        let twist = twist_gen(1024);
+        for i in 0..1024 {
+            a.push(rng.gen::<u32>());
+        }
+        let a_f64 = a.iter().map(|&e| e as f64).collect();
+
+        let mut a_fft = twist_fft_1d(&a_f64, &twist);
+        let a_ifft = twist_ifft_1d(&mut a_fft, &twist);
+        let res:Vec<u32> = a_ifft.iter().map(|&e| ((e.round() as u64) % 2u64.pow(32)) as u32).collect();
+        for i in 0..1024 {
+            assert_eq!(a[i], res[i]);
+        }
     }
 
     //#[test]
