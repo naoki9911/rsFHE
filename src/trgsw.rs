@@ -1,39 +1,8 @@
 use fftw::array::AlignedVec;
 use fftw::types::*;
-use std::num::Wrapping;
 use crate::trlwe;
 use crate::utils;
 use crate::mulfft;
-
-//pub fn decomposition(trlwe:(&Vec<u32>, &Vec<u32>)) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
-//    let offset = gen_offset();
-//    println!("{}", offset);
-//    let Bgbit:u32 = 10;
-//    let halfBg:u32 = 1 << (Bgbit - 1);
-//    let mask:u32 = (1 << Bgbit) - 1;
-//    let N:u32 = 500;
-//
-//    let mut decomp0:Vec<u32> = Vec::new();
-//    let mut decomp1:Vec<u32> = Vec::new();
-//    let mut decomp2:Vec<u32> = Vec::new();
-//    let mut decomp3:Vec<u32> = Vec::new();
-//
-//    for i in 0..N {
-//        let temp0 = trlwe.0[i as usize].wrapping_add(offset);
-//        let temp1 = trlwe.1[i as usize].wrapping_add(offset);
-//
-//        let mut tmp:u32 = ((temp0 >> (32 - (0 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-//        decomp0.push(tmp);
-//        tmp = ((temp0 >> (32 - (1 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-//        decomp1.push(tmp);
-//        tmp = ((temp1 >> (32 - (0 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-//        decomp2.push(tmp);
-//        tmp = ((temp1 >> (32 - (1 + 1) * Bgbit)) & mask).wrapping_sub(halfBg);
-//        decomp3.push(tmp);
-//    }
-//
-//    return (decomp0, decomp1, decomp2, decomp3);
-//}
 
 pub struct TRGSW {
     trlwe: Vec<trlwe::TRLWE>,
