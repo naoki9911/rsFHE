@@ -261,11 +261,16 @@ mod tests {
 
 
             let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha(), &key, &twist);
+            let p = trlwe::trlweSymDecrypt(&c, &key, &twist);
             let trgsw_true = trgswSymEncrypt(1, alpha(), &key, &twist);
             let ext_c = external_product(&trgsw_true, &c, &twist);
             let dec = trlwe::trlweSymDecrypt(&ext_c, &key, &twist);
 
             for j in 0..N() {
+                assert_eq!(plain_text[j], p[j]);
+            }
+            for j in 0..N() {
+                println!("{} {}", plain_text[j], dec[j]);
                 assert_eq!(plain_text[j], dec[j]);
             }
         }
