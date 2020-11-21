@@ -1,7 +1,8 @@
 use crate::utils;
+use crate::trlwe;
 use rand::Rng;
 
-pub struct TLWE {
+pub struct TLWELv0 {
     p: Vec<u32>,
 }
 
@@ -13,9 +14,9 @@ const fn alpha() -> f64 {
     3.0517578125e-05
 }
 
-pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWE {
+pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv0 {
     let mut rng = rand::thread_rng();
-    let mut tlwe: TLWE = TLWE { p: Vec::new() };
+    let mut tlwe: TLWELv0 = TLWELv0 { p: Vec::new() };
     let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         let rand_u32: u32 = rng.gen();
@@ -28,7 +29,7 @@ pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWE {
     return tlwe;
 }
 
-pub fn tlweSymDecrypt(tlwe: &TLWE, key: &Vec<u32>) -> u32 {
+pub fn tlweSymDecrypt(tlwe: &TLWELv0, key: &Vec<u32>) -> u32 {
     let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         inner_product = inner_product.wrapping_add(tlwe.p[i] * key[i]);
@@ -40,6 +41,16 @@ pub fn tlweSymDecrypt(tlwe: &TLWE, key: &Vec<u32>) -> u32 {
     } else {
         return 1;
     }
+}
+
+pub fn tlweLv1SymDecrypt(tlwe: &trlwe::TLWELv1, key :&Vec<u32>)  -> u32 {
+    let mut tlwelv0 = TLWELv0{
+        p :Vec::new()
+    };
+    for i in 0..tlwe.p.len() {
+        tlwelv0.p.push(tlwe.p[i]);
+    }
+    return tlweSymDecrypt(&tlwelv0, key);
 }
 
 #[cfg(test)]
