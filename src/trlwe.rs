@@ -1,12 +1,12 @@
+use crate::mulfft;
+use crate::utils;
 use fftw::array::AlignedVec;
 use fftw::types::*;
 use rand::Rng;
-use crate::mulfft;
-use crate::utils;
 
 pub struct TRLWE {
     pub a: Vec<u32>,
-    pub b: Vec<u32>
+    pub b: Vec<u32>,
 }
 
 const fn N() -> usize {
@@ -17,11 +17,11 @@ const fn alpha() -> f64 {
     2.98023223876953125e-08
 }
 
-pub fn trlweSymEncrypt(p:&Vec<f64>, alpha:f64, key:&Vec<u32>, twist: &AlignedVec<c64>) -> TRLWE{
+pub fn trlweSymEncrypt(p: &Vec<f64>, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c64>) -> TRLWE {
     let mut rng = rand::thread_rng();
-    let mut trlwe:TRLWE = TRLWE {
+    let mut trlwe: TRLWE = TRLWE {
         a: Vec::new(),
-        b: Vec::new()
+        b: Vec::new(),
     };
     for i in 0..key.len() {
         trlwe.a.push(rng.gen());
@@ -37,11 +37,11 @@ pub fn trlweSymEncrypt(p:&Vec<f64>, alpha:f64, key:&Vec<u32>, twist: &AlignedVec
     return trlwe;
 }
 
-pub fn trlweSymDecrypt(trlwe:&TRLWE, key:&Vec<u32>, twist:&AlignedVec<c64>) -> Vec<u32> {
+pub fn trlweSymDecrypt(trlwe: &TRLWE, key: &Vec<u32>, twist: &AlignedVec<c64>) -> Vec<u32> {
     let c_0_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
     let key_i32 = key.iter().map(|&e| e as i32).collect();
     let poly_res = mulfft::polynomial_mul(&c_0_i32, &key_i32, twist);
-    let mut res:Vec<u32> = Vec::new();
+    let mut res: Vec<u32> = Vec::new();
     for i in 0..trlwe.a.len() {
         let value = (trlwe.b[i].wrapping_sub(poly_res[i])) as i32;
         if value < 0 {
@@ -55,16 +55,16 @@ pub fn trlweSymDecrypt(trlwe:&TRLWE, key:&Vec<u32>, twist:&AlignedVec<c64>) -> V
 
 #[cfg(test)]
 mod tests {
-    use crate::trlwe::*;
     use crate::mulfft;
+    use crate::trlwe::*;
 
     #[test]
-    fn test_trlwe_enc_and_dec(){
+    fn test_trlwe_enc_and_dec() {
         let mut rng = rand::thread_rng();
 
         // Generate 1024bits secret key
-        let mut key:Vec<u32> = Vec::new();
-        let mut key_dirty:Vec<u32> = Vec::new();
+        let mut key: Vec<u32> = Vec::new();
+        let mut key_dirty: Vec<u32> = Vec::new();
         for i in 0..N() {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
@@ -75,14 +75,14 @@ mod tests {
         let try_num = 500;
 
         for i in 0..try_num {
-            let mut plain_text_enc:Vec<f64> = Vec::new();
-            let mut plain_text:Vec<u32> = Vec::new();
+            let mut plain_text_enc: Vec<f64> = Vec::new();
+            let mut plain_text: Vec<u32> = Vec::new();
 
             for j in 0..N() {
-                let sample:u32 = rng.gen::<u32>() % 2;
+                let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
-                   mu = -0.125; 
+                    mu = -0.125;
                 }
                 plain_text.push(sample);
                 plain_text_enc.push(mu);

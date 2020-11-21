@@ -1,8 +1,8 @@
 mod mulfft;
-mod utils;
 mod tlwe;
-mod trlwe;
 mod trgsw;
+mod trlwe;
+mod utils;
 
 fn main() {
     println!("Hello World!");

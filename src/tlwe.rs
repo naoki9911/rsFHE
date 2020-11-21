@@ -1,9 +1,8 @@
-use rand::Rng;
 use crate::utils;
-
+use rand::Rng;
 
 pub struct TLWE {
-    p: Vec<u32>
+    p: Vec<u32>,
 }
 
 const fn n() -> i32 {
@@ -14,12 +13,10 @@ const fn alpha() -> f64 {
     3.0517578125e-05
 }
 
-pub fn tlweSymEncrypt(p:f64, alpha:f64, key:&Vec<u32>) -> TLWE {
+pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWE {
     let mut rng = rand::thread_rng();
-    let mut tlwe:TLWE = TLWE {
-        p:Vec::new()
-    };
-    let mut inner_product:u32 = 0;
+    let mut tlwe: TLWE = TLWE { p: Vec::new() };
+    let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         let rand_u32: u32 = rng.gen();
         inner_product = inner_product.wrapping_add(key[i] * rand_u32);
@@ -31,8 +28,8 @@ pub fn tlweSymEncrypt(p:f64, alpha:f64, key:&Vec<u32>) -> TLWE {
     return tlwe;
 }
 
-pub fn tlweSymDecrypt(tlwe:&TLWE, key:&Vec<u32>) -> u32 {
-    let mut inner_product:u32 = 0;
+pub fn tlweSymDecrypt(tlwe: &TLWE, key: &Vec<u32>) -> u32 {
+    let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         inner_product = inner_product.wrapping_add(tlwe.p[i] * key[i]);
     }
@@ -54,8 +51,8 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         // Generate 500bits secret key
-        let mut key:Vec<u32> = Vec::new();
-        let mut key_dirty:Vec<u32> = Vec::new();
+        let mut key: Vec<u32> = Vec::new();
+        let mut key_dirty: Vec<u32> = Vec::new();
         for i in 0..n() {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
@@ -65,10 +62,10 @@ mod tests {
         let try_num = 10000;
 
         for i in 0..try_num {
-            let sample:u8 = rng.gen::<u8>() % 2;
+            let sample: u8 = rng.gen::<u8>() % 2;
             let mut mu = 0.125;
             if sample == 0 {
-               mu = -0.125; 
+                mu = -0.125;
             }
             let secret = tlweSymEncrypt(mu, alpha(), &key);
             let plain = tlweSymDecrypt(&secret, &key) as u8;

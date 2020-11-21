@@ -1,8 +1,8 @@
-use fftw::array::AlignedVec;
-use fftw::types::*;
+use crate::mulfft;
 use crate::trlwe;
 use crate::utils;
-use crate::mulfft;
+use fftw::array::AlignedVec;
+use fftw::types::*;
 
 pub struct TRGSW {
     trlwe: Vec<trlwe::TRLWE>,
@@ -28,42 +28,44 @@ const fn alpha() -> f64 {
     2.98023223876953125e-08
 }
 
-pub fn trgswSymEncrypt(p:u32, alpha:f64, key:&Vec<u32>, twist: &AlignedVec<c64>) -> TRGSW
-{
-    let mut p_f64:Vec<f64> = Vec::new();
+pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c64>) -> TRGSW {
+    let mut p_f64: Vec<f64> = Vec::new();
     for i in 0..l() {
-        let BgM:f64 = (Bg() as f64).powf(((1 + i) as f64) * -1.0);
+        let BgM: f64 = (Bg() as f64).powf(((1 + i) as f64) * -1.0);
         p_f64.push(BgM);
     }
     let p_torus = utils::f64_to_u32_torus(&p_f64);
 
-    let mut plain_zero:Vec<f64> = Vec::new();
+    let mut plain_zero: Vec<f64> = Vec::new();
     for i in 0..N() {
         plain_zero.push(0.0);
     }
 
-    let mut trgsw = TRGSW {
-        trlwe : Vec::new()
-    };
+    let mut trgsw = TRGSW { trlwe: Vec::new() };
 
-    for i in 0..l()*2 {
-        trgsw.trlwe.push(trlwe::trlweSymEncrypt(&plain_zero, alpha, &key, &twist));
+    for i in 0..l() * 2 {
+        trgsw
+            .trlwe
+            .push(trlwe::trlweSymEncrypt(&plain_zero, alpha, &key, &twist));
     }
 
-    for i in 0..l(){
+    for i in 0..l() {
         trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
-        trgsw.trlwe[i+l()].b[0] = trgsw.trlwe[i+l()].b[0].wrapping_add(p * p_torus[i]);
+        trgsw.trlwe[i + l()].b[0] = trgsw.trlwe[i + l()].b[0].wrapping_add(p * p_torus[i]);
     }
     return trgsw;
 }
 
-pub fn external_product(trgsw: &TRGSW, trlwe: &trlwe::TRLWE, twist: &AlignedVec<c64>) -> trlwe::TRLWE
-{
+pub fn external_product(
+    trgsw: &TRGSW,
+    trlwe: &trlwe::TRLWE,
+    twist: &AlignedVec<c64>,
+) -> trlwe::TRLWE {
     let dec_a = decomposition(&trlwe.a);
     let dec_b = decomposition(&trlwe.b);
-    let mut res:trlwe::TRLWE = trlwe::TRLWE {
-        a:Vec::new(),
-        b:Vec::new()
+    let mut res: trlwe::TRLWE = trlwe::TRLWE {
+        a: Vec::new(),
+        b: Vec::new(),
     };
 
     for i in 0..N() {
@@ -77,7 +79,7 @@ pub fn external_product(trgsw: &TRGSW, trlwe: &trlwe::TRLWE, twist: &AlignedVec<
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i+l()].a, twist);
+        let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i + l()].a, twist);
         for j in 0..N() {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
@@ -87,7 +89,7 @@ pub fn external_product(trgsw: &TRGSW, trlwe: &trlwe::TRLWE, twist: &AlignedVec<
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i+l()].b, twist);
+        let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i + l()].b, twist);
         for j in 0..N() {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
@@ -96,21 +98,22 @@ pub fn external_product(trgsw: &TRGSW, trlwe: &trlwe::TRLWE, twist: &AlignedVec<
     return res;
 }
 
-pub fn decomposition(a:&Vec<u32>) -> Vec<Vec<u32>> {
+pub fn decomposition(a: &Vec<u32>) -> Vec<Vec<u32>> {
     let offset = gen_offset();
 
-    let mut a_tilda:Vec<u32> = Vec::new();
-    let mut res:Vec<Vec<u32>> = Vec::new();
+    let mut a_tilda: Vec<u32> = Vec::new();
+    let mut res: Vec<Vec<u32>> = Vec::new();
 
     for i in 0..N() {
         a_tilda.push(a[i as usize].wrapping_add(offset));
     }
 
-    for i in 1..(l()+1) as u32 {
+    for i in 1..(l() + 1) as u32 {
         res.push(Vec::new());
         for j in 0..N() {
-            let tmp = ((a_tilda[j as usize] >> (32-BgBit()*i))&(Bg()-1)).wrapping_sub(Bg()/2);
-            res[(i-1) as usize].push(tmp)
+            let tmp =
+                ((a_tilda[j as usize] >> (32 - BgBit() * i)) & (Bg() - 1)).wrapping_sub(Bg() / 2);
+            res[(i - 1) as usize].push(tmp)
         }
     }
 
@@ -118,10 +121,15 @@ pub fn decomposition(a:&Vec<u32>) -> Vec<Vec<u32>> {
 }
 
 // if cond == 0 then in1 else in2
-pub fn cmux(in1:&trlwe::TRLWE, in2:&trlwe::TRLWE, cond:&TRGSW, twist: &AlignedVec<c64>) -> trlwe::TRLWE {
-    let mut tmp = trlwe::TRLWE{
-        a:Vec::new(),
-        b:Vec::new()
+pub fn cmux(
+    in1: &trlwe::TRLWE,
+    in2: &trlwe::TRLWE,
+    cond: &TRGSW,
+    twist: &AlignedVec<c64>,
+) -> trlwe::TRLWE {
+    let mut tmp = trlwe::TRLWE {
+        a: Vec::new(),
+        b: Vec::new(),
     };
     for i in 0..N() {
         tmp.a.push(in2.a[i].wrapping_sub(in1.a[i]));
@@ -129,9 +137,9 @@ pub fn cmux(in1:&trlwe::TRLWE, in2:&trlwe::TRLWE, cond:&TRGSW, twist: &AlignedVe
     }
 
     let tmp2 = external_product(cond, &tmp, twist);
-    let mut res = trlwe::TRLWE{
-        a:Vec::new(),
-        b:Vec::new()
+    let mut res = trlwe::TRLWE {
+        a: Vec::new(),
+        b: Vec::new(),
     };
     for i in 0..N() {
         res.a.push(tmp2.a[i].wrapping_add(in1.a[i]));
@@ -142,57 +150,55 @@ pub fn cmux(in1:&trlwe::TRLWE, in2:&trlwe::TRLWE, cond:&TRGSW, twist: &AlignedVe
 }
 
 pub fn gen_offset() -> u32 {
-    let mut offset:u32 = 0;
+    let mut offset: u32 = 0;
 
     for i in 0..(l() as u32) {
-        offset = offset.wrapping_add(Bg() / 2 * (1 << (32 - (i + 1)*BgBit())));
+        offset = offset.wrapping_add(Bg() / 2 * (1 << (32 - (i + 1) * BgBit())));
     }
 
     return offset;
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::trlwe;
-    use crate::utils;
     use crate::mulfft;
     use crate::trgsw::*;
+    use crate::trlwe;
+    use crate::utils;
     use rand::Rng;
 
     #[test]
-    fn test_decomposition(){
+    fn test_decomposition() {
         let mut rng = rand::thread_rng();
 
         // Generate 1024bits secret key
-        let mut key:Vec<u32> = Vec::new();
+        let mut key: Vec<u32> = Vec::new();
         for i in 0..N() {
             key.push((rng.gen::<u8>() % 2) as u32);
         }
 
         let twist = mulfft::twist_gen(N());
-        let mut h:Vec<f64> = Vec::new();
+        let mut h: Vec<f64> = Vec::new();
         let try_num = 1000;
 
-        for i in 1..l()+1 {
+        for i in 1..l() + 1 {
             let tmp = (Bg() as f64).powf(-(i as f64));
             h.push(tmp);
         }
 
         for i in 0..try_num {
-            let mut plain_text_enc:Vec<f64> = Vec::new();
-            let mut plain_text:Vec<u32> = Vec::new();
+            let mut plain_text_enc: Vec<f64> = Vec::new();
+            let mut plain_text: Vec<u32> = Vec::new();
 
             for j in 0..N() {
-                let sample:u32 = rng.gen::<u32>() % 2;
+                let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
-                   mu = -0.125; 
+                    mu = -0.125;
                 }
                 plain_text.push(sample);
                 plain_text_enc.push(mu);
             }
-
 
             let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha(), &key, &twist);
             let c_decomp_1 = decomposition(&c.a);
@@ -200,11 +206,11 @@ mod tests {
             let h_u32 = utils::f64_to_u32_torus(&h);
             let mut res = trlwe::TRLWE {
                 a: Vec::new(),
-                b: Vec::new()
+                b: Vec::new(),
             };
             for j in 0..N() {
-                let mut tmp0:u32 = 0;
-                let mut tmp1:u32 = 0;
+                let mut tmp0: u32 = 0;
+                let mut tmp1: u32 = 0;
                 for k in 0..l() {
                     tmp0 = tmp0.wrapping_add(c_decomp_1[k][j].wrapping_mul(h_u32[k]));
                     tmp1 = tmp1.wrapping_add(c_decomp_2[k][j].wrapping_mul(h_u32[k]));
@@ -222,11 +228,11 @@ mod tests {
     }
 
     #[test]
-    fn test_external_product(){
+    fn test_external_product() {
         let mut rng = rand::thread_rng();
 
         // Generate 1024bits secret key
-        let mut key:Vec<u32> = Vec::new();
+        let mut key: Vec<u32> = Vec::new();
         for i in 0..N() {
             key.push((rng.gen::<u8>() % 2) as u32);
         }
@@ -235,14 +241,14 @@ mod tests {
         let try_num = 100;
 
         for i in 0..try_num {
-            let mut plain_text_enc:Vec<f64> = Vec::new();
-            let mut plain_text:Vec<u32> = Vec::new();
+            let mut plain_text_enc: Vec<f64> = Vec::new();
+            let mut plain_text: Vec<u32> = Vec::new();
 
             for j in 0..N() {
-                let sample:u32 = rng.gen::<u32>() % 2;
+                let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
-                   mu = -0.125; 
+                    mu = -0.125;
                 }
                 plain_text.push(sample);
                 plain_text_enc.push(mu);
@@ -264,9 +270,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cmux(){
+    fn test_cmux() {
         let mut rng = rand::thread_rng();
-        let mut key:Vec<u32> = Vec::new();
+        let mut key: Vec<u32> = Vec::new();
         for i in 0..N() {
             key.push((rng.gen::<u8>() % 2) as u32);
         }
@@ -274,25 +280,25 @@ mod tests {
         let twist = mulfft::twist_gen(N());
         let try_num = 100;
         for i in 0..try_num {
-            let mut plain_text_enc_1:Vec<f64> = Vec::new();
-            let mut plain_text_enc_2:Vec<f64> = Vec::new();
-            let mut plain_text_1:Vec<u32> = Vec::new();
-            let mut plain_text_2:Vec<u32> = Vec::new();
+            let mut plain_text_enc_1: Vec<f64> = Vec::new();
+            let mut plain_text_enc_2: Vec<f64> = Vec::new();
+            let mut plain_text_1: Vec<u32> = Vec::new();
+            let mut plain_text_2: Vec<u32> = Vec::new();
 
             for j in 0..N() {
-                let sample:u32 = rng.gen::<u32>() % 2;
+                let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
-                   mu = -0.125; 
+                    mu = -0.125;
                 }
                 plain_text_1.push(sample);
                 plain_text_enc_1.push(mu);
             }
             for j in 0..N() {
-                let sample:u32 = rng.gen::<u32>() % 2;
+                let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
-                   mu = -0.125; 
+                    mu = -0.125;
                 }
                 plain_text_2.push(sample);
                 plain_text_enc_2.push(mu);
