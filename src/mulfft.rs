@@ -65,7 +65,7 @@ pub fn polynomial_mul(a: &Vec<i32>, b: &Vec<i32>, twist: &AlignedVec<c64>) -> Ve
     }
 
     let res = twist_ifft_1d(&mut mul, twist);
-    return res.iter().map(|&e| ((e.round() as u64) % 2u64.pow(32)) as u32).collect();
+    return res.iter().map(|&e| ((e.round() as i64) % 2i64.pow(32)) as u32).collect();
 }
 
 pub fn polynomial_mul_u32(a: &Vec<u32>, b: &Vec<u32>, twist: &AlignedVec<c64>) -> Vec<u32> {

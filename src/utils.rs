@@ -5,7 +5,7 @@ pub fn f64_to_u32_torus(d: &Vec<f64>) -> Vec<u32> {
     let mut res:Vec<u32> = Vec::new();
     for i in 0..d.len(){
         let torus = (d[i]%1.0) as f64 * 2u64.pow(32) as f64;
-        res.push(torus as u32);
+        res.push((torus as i64)as u32);
     }
     return res;
 }
