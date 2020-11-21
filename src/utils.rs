@@ -1,4 +1,4 @@
-use rand_distr::Normal;
+use rand_distr::{Distribution, Normal};
 
 pub fn f64_to_u32_torus(d: &Vec<f64>) -> Vec<u32> {
     let mut res: Vec<u32> = Vec::new();
