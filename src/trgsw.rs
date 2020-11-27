@@ -1,5 +1,6 @@
 use crate::mulfft;
 use crate::trlwe;
+use crate::tlwe;
 use crate::utils;
 use fftw::array::AlignedVec;
 use fftw::types::*;
@@ -10,6 +11,10 @@ pub struct TRGSW {
 
 const fn N() -> usize {
     1024
+}
+
+const fn Nbit() -> usize {
+    10
 }
 
 const fn BgBit() -> u32 {
@@ -159,11 +164,74 @@ pub fn gen_offset() -> u32 {
     return offset;
 }
 
+pub fn blind_rotate(src : &tlwe::TLWELv0, testvec: &trlwe::TRLWE, bkey: &Vec<TRGSW>, twist:&AlignedVec<c64>) -> trlwe::TRLWE {
+    let b_tilda = 2 * N() - (((src.b() as usize) + (1 << (31 - Nbit() -1))) >> (32-Nbit()-1));
+    let mut res = trlwe::TRLWE{
+        a:poly_mul_with_X_k(&testvec.a, b_tilda),
+        b:poly_mul_with_X_k(&testvec.b, b_tilda),
+    };
+
+    let n = tlwe::n();
+    for i in 0..n {
+        let a_tilda = ((src.p[i as usize].wrapping_add((1<< (31 -Nbit()-1)))) >> (32-Nbit()-1)) as usize;
+        let res2 = trlwe::TRLWE {
+            a:poly_mul_with_X_k(&res.a, a_tilda),
+            b:poly_mul_with_X_k(&res.b, a_tilda),
+        };
+        res = cmux(&res, &res2, &bkey[i as usize], twist);
+    }
+
+    return res;
+}
+
+pub fn poly_mul_with_X_k(a: &Vec<u32>, k:usize) -> Vec<u32> {
+    let N = a.len();
+
+    let mut res:Vec<u32> = Vec::new();
+    for i in 0..N {
+        res.push(0);
+    }
+
+    if k < N {
+        for i in 0..(N - k) {
+            res[i+k] = a[i];
+        }
+        for i in (N-k)..N {
+            res[i+k-N] = u32::MAX - a[i];
+        }
+    } else {
+        for i in 0..2*N - k {
+            res[i+k-N] = u32::MAX - a[i];
+        }
+        for i in (2*N - k)..N {
+            res[i-(2*N -k)] = a[i];
+        }
+    }
+
+    return res;
+}
+
+pub fn generate_testvector() -> trlwe::TRLWE {
+    let mut testvec = trlwe::TRLWE {
+        a:Vec::new(),
+        b:Vec::new(),
+    };
+    let b_vec:Vec<f64> = vec![0.125];
+    let b_torus = utils::f64_to_u32_torus(&b_vec)[0];
+    for i in 0..N() {
+        testvec.a.push(0);
+        testvec.b.push(b_torus);
+    }
+
+    return testvec;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::mulfft;
     use crate::trgsw::*;
     use crate::trlwe;
+    use crate::tlwe;
     use crate::utils;
     use rand::Rng;
 
@@ -315,6 +383,41 @@ mod tests {
                 assert_eq!(plain_text_1[j], dec_1[j]);
                 assert_eq!(plain_text_2[j], dec_2[j]);
             }
+        }
+    }
+
+    #[test]
+    fn test_blind_rotate() {
+        let mut rng = rand::thread_rng();
+        let twist = mulfft::twist_gen(N());
+        let mut keyLv0: Vec<u32> = Vec::new();
+        let mut keyLv1: Vec<u32> = Vec::new();
+        for i in 0..tlwe::n() {
+            keyLv0.push((rng.gen::<u8>() % 2) as u32);
+        }
+        for i in 0..N() {
+            keyLv1.push((rng.gen::<u8>() % 2) as u32);
+        }
+
+        let mut bKey : Vec<TRGSW> = Vec::new();
+        for i in 0..keyLv0.len() {
+            bKey.push(trgswSymEncrypt(keyLv0[i], trlwe::alpha(), &keyLv1, &twist));
+        }
+
+        let try_num = 10;
+        let test_vec = generate_testvector();
+        for i in 0..try_num {
+            let plain_text = rng.gen::<u32>() % 2;
+            let mut mu = 0.125;
+            if plain_text == 0 {
+                mu = -0.125;
+            }
+
+            let tlwe = tlwe::tlweSymEncrypt(mu, tlwe::alpha(), &keyLv0);
+            let trlwe = blind_rotate(&tlwe, &test_vec, &bKey, &twist);
+            let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
+            let dec = tlwe::tlweLv1SymDecrypt(&tlwe_lv1, &keyLv1);
+            assert_eq!(plain_text, dec);
         }
     }
 }

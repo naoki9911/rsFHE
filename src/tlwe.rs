@@ -3,15 +3,21 @@ use crate::trlwe;
 use rand::Rng;
 
 pub struct TLWELv0 {
-    p: Vec<u32>,
+    pub p: Vec<u32>,
 }
 
-const fn n() -> i32 {
+pub const fn n() -> i32 {
     630
 }
 
-const fn alpha() -> f64 {
+pub const fn alpha() -> f64 {
     3.0517578125e-05
+}
+
+impl TLWELv0 {
+    pub fn b(&self) -> u32 {
+        return self.p[self.p.len()-1];
+    }
 }
 
 pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv0 {

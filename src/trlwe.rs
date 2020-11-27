@@ -17,7 +17,7 @@ const fn N() -> usize {
     1024
 }
 
-const fn alpha() -> f64 {
+pub const fn alpha() -> f64 {
     2.98023223876953125e-08
 }
 
@@ -77,8 +77,9 @@ pub fn sample_extract_index(trlwe: &TRLWE, k: usize) -> TLWELv1 {
 #[cfg(test)]
 mod tests {
     use crate::mulfft;
-    use crate::trlwe::*;
-    use crate::tlwe::*;
+    use crate::trlwe;
+    use crate::tlwe;
+    use rand::Rng;
 
     #[test]
     fn test_trlwe_enc_and_dec() {
@@ -87,12 +88,12 @@ mod tests {
         // Generate 1024bits secret key
         let mut key: Vec<u32> = Vec::new();
         let mut key_dirty: Vec<u32> = Vec::new();
-        for i in 0..N() {
+        for i in 0..trlwe::N() {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(N());
+        let twist = mulfft::twist_gen(trlwe::N());
         let mut correct = 0;
         let try_num = 500;
 
@@ -100,7 +101,7 @@ mod tests {
             let mut plain_text_enc: Vec<f64> = Vec::new();
             let mut plain_text: Vec<u32> = Vec::new();
 
-            for j in 0..N() {
+            for j in 0..trlwe::N() {
                 let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -110,11 +111,11 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlweSymEncrypt(&plain_text_enc, alpha(), &key, &twist);
-            let dec = trlweSymDecrypt(&c, &key, &twist);
-            let dec_dirty = trlweSymDecrypt(&c, &key_dirty, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, trlwe::alpha(), &key, &twist);
+            let dec = trlwe::trlweSymDecrypt(&c, &key, &twist);
+            let dec_dirty = trlwe::trlweSymDecrypt(&c, &key_dirty, &twist);
 
-            for j in 0..N() {
+            for j in 0..trlwe::N() {
                 assert_eq!(plain_text[j], dec[j]);
                 if plain_text[j] != dec_dirty[j] {
                     correct += 1;
@@ -122,7 +123,7 @@ mod tests {
             }
         }
 
-        let probability = correct as f64 / (try_num * N()) as f64;
+        let probability = correct as f64 / (try_num * trlwe::N()) as f64;
         assert!(probability - 0.50 < 0.1);
     }
 
@@ -133,12 +134,12 @@ mod tests {
         // Generate 1024bits secret key
         let mut key: Vec<u32> = Vec::new();
         let mut key_dirty: Vec<u32> = Vec::new();
-        for i in 0..N() {
+        for i in 0..trlwe::N() {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(N());
+        let twist = mulfft::twist_gen(trlwe::N());
         let mut correct = 0;
         let try_num = 10;
 
@@ -146,7 +147,7 @@ mod tests {
             let mut plain_text_enc: Vec<f64> = Vec::new();
             let mut plain_text: Vec<u32> = Vec::new();
 
-            for j in 0..N() {
+            for j in 0..trlwe::N() {
                 let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -156,12 +157,12 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlweSymEncrypt(&plain_text_enc, alpha(), &key, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, trlwe::alpha(), &key, &twist);
 
-            for j in 0..N() {
-                let tlwe = sample_extract_index(&c, j);
-                let dec = tlweLv1SymDecrypt(&tlwe, &key);
-                let dec_dirty = tlweLv1SymDecrypt(&tlwe, &key_dirty);
+            for j in 0..trlwe::N() {
+                let tlwe = trlwe::sample_extract_index(&c, j);
+                let dec = tlwe::tlweLv1SymDecrypt(&tlwe, &key);
+                let dec_dirty = tlwe::tlweLv1SymDecrypt(&tlwe, &key_dirty);
                 assert_eq!(plain_text[j], dec);
                 if plain_text[j] != dec_dirty {
                     correct += 1;
@@ -169,7 +170,7 @@ mod tests {
             }
         }
 
-        let probability = correct as f64 / (try_num * N()) as f64;
+        let probability = correct as f64 / (try_num * trlwe::N()) as f64;
         assert!(probability - 0.50 < 0.1);
     }
 }
