@@ -58,15 +58,13 @@ pub fn trlweSymDecrypt(trlwe: &TRLWE, key: &Vec<u32>, twist: &AlignedVec<c64>) -
 }
 
 pub fn sample_extract_index(trlwe: &TRLWE, k: usize) -> TLWELv1 {
-    let mut res = TLWELv1 {
-        p : Vec::new()
-    };
+    let mut res = TLWELv1 { p: Vec::new() };
 
     for i in 0..N() {
         if i <= k {
-            res.p.push(trlwe.a[k-i]);
-        }else{
-            res.p.push(u32::MAX-trlwe.a[N()+k-i]);
+            res.p.push(trlwe.a[k - i]);
+        } else {
+            res.p.push(u32::MAX - trlwe.a[N() + k - i]);
         }
     }
     res.p.push(trlwe.b[k]);
@@ -77,8 +75,8 @@ pub fn sample_extract_index(trlwe: &TRLWE, k: usize) -> TLWELv1 {
 #[cfg(test)]
 mod tests {
     use crate::mulfft;
-    use crate::trlwe;
     use crate::tlwe;
+    use crate::trlwe;
     use rand::Rng;
 
     #[test]

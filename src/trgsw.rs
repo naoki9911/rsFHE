@@ -1,6 +1,7 @@
 use crate::mulfft;
-use crate::trlwe;
+use crate::params;
 use crate::tlwe;
+use crate::trlwe;
 use crate::utils;
 use fftw::array::AlignedVec;
 use fftw::types::*;
@@ -172,19 +173,24 @@ pub fn gen_offset() -> u32 {
     return offset;
 }
 
-pub fn blind_rotate(src : &tlwe::TLWELv0, testvec: &trlwe::TRLWE, bkey: &Vec<TRGSW>, twist:&AlignedVec<c64>) -> trlwe::TRLWE {
-    let b_tilda = 2 * N() - (((src.b() as usize) + (1 << (31 - Nbit() -1))) >> (32-Nbit()-1));
-    let mut res = trlwe::TRLWE{
-        a:poly_mul_with_X_k(&testvec.a, b_tilda),
-        b:poly_mul_with_X_k(&testvec.b, b_tilda),
+pub fn blind_rotate(
+    src: &tlwe::TLWELv0,
+    testvec: &trlwe::TRLWE,
+    bkey: &Vec<TRGSW>,
+    twist: &AlignedVec<c64>,
+) -> trlwe::TRLWE {
+    let b_tilda = 2 * N() - (((src.b() as usize) + (1 << (31 - Nbit() - 1))) >> (32 - Nbit() - 1));
+    let mut res = trlwe::TRLWE {
+        a: poly_mul_with_X_k(&testvec.a, b_tilda),
+        b: poly_mul_with_X_k(&testvec.b, b_tilda),
     };
 
-    let n = tlwe::n();
-    for i in 0..n {
-        let a_tilda = ((src.p[i as usize].wrapping_add((1<< (31 -Nbit()-1)))) >> (32-Nbit()-1)) as usize;
+    for i in 0..params::tlwe_lv0::N {
+        let a_tilda = ((src.p[i as usize].wrapping_add((1 << (31 - Nbit() - 1))))
+            >> (32 - Nbit() - 1)) as usize;
         let res2 = trlwe::TRLWE {
-            a:poly_mul_with_X_k(&res.a, a_tilda),
-            b:poly_mul_with_X_k(&res.b, a_tilda),
+            a: poly_mul_with_X_k(&res.a, a_tilda),
+            b: poly_mul_with_X_k(&res.b, a_tilda),
         };
         res = cmux(&res, &res2, &bkey[i as usize], twist);
     }
@@ -192,27 +198,27 @@ pub fn blind_rotate(src : &tlwe::TLWELv0, testvec: &trlwe::TRLWE, bkey: &Vec<TRG
     return res;
 }
 
-pub fn poly_mul_with_X_k(a: &Vec<u32>, k:usize) -> Vec<u32> {
+pub fn poly_mul_with_X_k(a: &Vec<u32>, k: usize) -> Vec<u32> {
     let N = a.len();
 
-    let mut res:Vec<u32> = Vec::new();
+    let mut res: Vec<u32> = Vec::new();
     for i in 0..N {
         res.push(0);
     }
 
     if k < N {
         for i in 0..(N - k) {
-            res[i+k] = a[i];
+            res[i + k] = a[i];
         }
-        for i in (N-k)..N {
-            res[i+k-N] = u32::MAX - a[i];
+        for i in (N - k)..N {
+            res[i + k - N] = u32::MAX - a[i];
         }
     } else {
-        for i in 0..2*N - k {
-            res[i+k-N] = u32::MAX - a[i];
+        for i in 0..2 * N - k {
+            res[i + k - N] = u32::MAX - a[i];
         }
-        for i in (2*N - k)..N {
-            res[i-(2*N -k)] = a[i];
+        for i in (2 * N - k)..N {
+            res[i - (2 * N - k)] = a[i];
         }
     }
 
@@ -221,10 +227,10 @@ pub fn poly_mul_with_X_k(a: &Vec<u32>, k:usize) -> Vec<u32> {
 
 pub fn generate_testvector() -> trlwe::TRLWE {
     let mut testvec = trlwe::TRLWE {
-        a:Vec::new(),
-        b:Vec::new(),
+        a: Vec::new(),
+        b: Vec::new(),
     };
-    let b_vec:Vec<f64> = vec![0.125];
+    let b_vec: Vec<f64> = vec![0.125];
     let b_torus = utils::f64_to_u32_torus(&b_vec)[0];
     for i in 0..N() {
         testvec.a.push(0);
@@ -234,27 +240,24 @@ pub fn generate_testvector() -> trlwe::TRLWE {
     return testvec;
 }
 
-pub fn identity_key_switching(src: &trlwe::TLWELv1, ks: &Vec<Vec<Vec<tlwe::TLWELv0>>>) -> tlwe::TLWELv0 {
-    let mut res = tlwe::TLWELv0 {
-       p:Vec::new(),
-    };
+pub fn identity_key_switching(
+    src: &trlwe::TLWELv1,
+    ks: &Vec<Vec<Vec<tlwe::TLWELv0>>>,
+) -> tlwe::TLWELv0 {
+    let mut res = tlwe::TLWELv0::new();
 
-    for i in 0..tlwe::n() {
-        res.p.push(0);
-    }
-    res.p.push(src.p[src.p.len()-1]);
+    res.p[params::tlwe_lv0::N] = src.p[src.p.len() - 1];
 
-    let prec_offset = 1 << (32 - (1+basebit()*iks_t()));
+    let prec_offset = 1 << (32 - (1 + basebit() * iks_t()));
 
     for i in 0..N() {
         let ks_i = &ks[i];
         let a_bar = src.p[i].wrapping_add(prec_offset);
-        for j in 0..iks_t(){
+        for j in 0..iks_t() {
             let ks_ij = &ks_i[j];
-            let k = (a_bar >> (32 - (j+1)*basebit()))&((1 << basebit())-1);
+            let k = (a_bar >> (32 - (j + 1) * basebit())) & ((1 << basebit()) - 1);
             if k != 0 {
                 let ks_ijk = &ks_ij[k as usize];
-                assert_eq!(ks_ijk.p.len() as i32, tlwe::n()+1);
                 for x in 0..res.p.len() {
                     res.p[x] = res.p[x].wrapping_sub(ks_ijk.p[x]);
                 }
@@ -262,23 +265,23 @@ pub fn identity_key_switching(src: &trlwe::TLWELv1, ks: &Vec<Vec<Vec<tlwe::TLWEL
         }
     }
 
-    return res
+    return res;
 }
 
-pub fn generate_ksk(sKeyLv0:&Vec<u32>, sKeyLv1:&Vec<u32>) -> Vec<Vec<Vec<tlwe::TLWELv0>>> {
-    let mut res:Vec<Vec<Vec<tlwe::TLWELv0>>> = Vec::new();
+pub fn generate_ksk(sKeyLv0: &Vec<u32>, sKeyLv1: &Vec<u32>) -> Vec<Vec<Vec<tlwe::TLWELv0>>> {
+    let mut res: Vec<Vec<Vec<tlwe::TLWELv0>>> = Vec::new();
 
     for i in 0..N() {
-        let mut ksk_i:Vec<Vec<tlwe::TLWELv0>> = Vec::new();
+        let mut ksk_i: Vec<Vec<tlwe::TLWELv0>> = Vec::new();
         for j in 0..iks_t() {
-            let mut ksk_ij:Vec<tlwe::TLWELv0> = Vec::new();
+            let mut ksk_ij: Vec<tlwe::TLWELv0> = Vec::new();
             for k in 0..(1 << basebit()) {
-                if k == 0{
-                    ksk_ij.push(tlwe::TLWELv0{p:Vec::new()});
+                if k == 0 {
+                    ksk_ij.push(tlwe::TLWELv0::new());
                     continue;
                 }
-                let p = ((k * sKeyLv1[i]) as f64) / ((1 << ((j+1)*basebit())) as f64);
-                ksk_ij.push(tlwe::tlweSymEncrypt(p, tlwe::alpha(), sKeyLv0));
+                let p = ((k * sKeyLv1[i]) as f64) / ((1 << ((j + 1) * basebit())) as f64);
+                ksk_ij.push(tlwe::tlweSymEncrypt(p, params::tlwe_lv0::ALPHA, sKeyLv0));
             }
             ksk_i.push(ksk_ij);
         }
@@ -288,16 +291,16 @@ pub fn generate_ksk(sKeyLv0:&Vec<u32>, sKeyLv1:&Vec<u32>) -> Vec<Vec<Vec<tlwe::T
     return res;
 }
 
-pub fn hom_nand(tlwe_a:&tlwe::TLWELv0, tlwe_b:&tlwe::TLWELv0, ksk:&Vec<Vec<Vec<tlwe::TLWELv0>>>, b_key:&Vec<TRGSW>, test_vec:&trlwe::TRLWE, twist:&AlignedVec<c64>) -> tlwe::TLWELv0 {
-    let mut tlwe_nand:tlwe::TLWELv0 = tlwe::TLWELv0{
-        p:Vec::new(),
-    };
-    for i in 0..tlwe_a.p.len() {
-        let tmp:u32 = tlwe_a.p[i].wrapping_add(tlwe_b.p[i]);
-        tlwe_nand.p.push(0u32.wrapping_sub(tmp));
-    }
-    let b_idx = tlwe_nand.p.len()-1;
-    tlwe_nand.p[b_idx] = tlwe_nand.p[b_idx] + utils::f64_to_u32_torus(&vec![0.125])[0];
+pub fn hom_nand(
+    tlwe_a: &tlwe::TLWELv0,
+    tlwe_b: &tlwe::TLWELv0,
+    ksk: &Vec<Vec<Vec<tlwe::TLWELv0>>>,
+    b_key: &Vec<TRGSW>,
+    test_vec: &trlwe::TRLWE,
+    twist: &AlignedVec<c64>,
+) -> tlwe::TLWELv0 {
+    let mut tlwe_nand = -(tlwe_a + tlwe_b);
+    *tlwe_nand.b_mut() = tlwe_nand.b() + utils::f64_to_u32_torus(&vec![0.125])[0];
 
     let trlwe = blind_rotate(&tlwe_nand, test_vec, b_key, twist);
     let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
@@ -309,9 +312,10 @@ pub fn hom_nand(tlwe_a:&tlwe::TLWELv0, tlwe_b:&tlwe::TLWELv0, ksk:&Vec<Vec<Vec<t
 #[cfg(test)]
 mod tests {
     use crate::mulfft;
+    use crate::params;
+    use crate::tlwe;
     use crate::trgsw::*;
     use crate::trlwe;
-    use crate::tlwe;
     use crate::utils;
     use rand::Rng;
 
@@ -472,14 +476,14 @@ mod tests {
         let twist = mulfft::twist_gen(N());
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
-        for i in 0..tlwe::n() {
+        for i in 0..params::tlwe_lv0::N {
             keyLv0.push((rng.gen::<u8>() % 2) as u32);
         }
         for i in 0..N() {
             keyLv1.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let mut bKey : Vec<TRGSW> = Vec::new();
+        let mut bKey: Vec<TRGSW> = Vec::new();
         for i in 0..keyLv0.len() {
             bKey.push(trgswSymEncrypt(keyLv0[i], trlwe::alpha(), &keyLv1, &twist));
         }
@@ -493,7 +497,7 @@ mod tests {
                 mu = -0.125;
             }
 
-            let tlwe = tlwe::tlweSymEncrypt(mu, tlwe::alpha(), &keyLv0);
+            let tlwe = tlwe::tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &keyLv0);
             let trlwe = blind_rotate(&tlwe, &test_vec, &bKey, &twist);
             let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
             let dec = tlwe::tlweLv1SymDecrypt(&tlwe_lv1, &keyLv1);
@@ -507,7 +511,7 @@ mod tests {
         let twist = mulfft::twist_gen(N());
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
-        for i in 0..tlwe::n() {
+        for i in 0..params::tlwe_lv0::N {
             keyLv0.push((rng.gen::<u8>() % 2) as u32);
         }
         for i in 0..N() {
@@ -524,8 +528,7 @@ mod tests {
                 mu = -0.125;
             }
 
-            
-            let tlwe_lv1 = tlwe::tlweLv1SymEncrypt(mu, tlwe::alpha(), &keyLv1);
+            let tlwe_lv1 = tlwe::tlweLv1SymEncrypt(mu, params::tlwe_lv0::ALPHA, &keyLv1);
             let tlwe_lv0 = identity_key_switching(&tlwe_lv1, &ksk);
             let dec = tlwe::tlweSymDecrypt(&tlwe_lv0, &keyLv0);
             assert_eq!(plain_text, dec);
@@ -538,19 +541,19 @@ mod tests {
         let twist = mulfft::twist_gen(N());
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
-        for i in 0..tlwe::n() {
+        for i in 0..params::tlwe_lv0::N {
             keyLv0.push((rng.gen::<u8>() % 2) as u32);
         }
         for i in 0..N() {
             keyLv1.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let mut b_key : Vec<TRGSW> = Vec::new();
+        let mut b_key: Vec<TRGSW> = Vec::new();
         for i in 0..keyLv0.len() {
             b_key.push(trgswSymEncrypt(keyLv0[i], trlwe::alpha(), &keyLv1, &twist));
         }
 
-        let try_num = 10;
+        let try_num = 100;
         let test_vec = generate_testvector();
         let ksk = generate_ksk(&keyLv0, &keyLv1);
         for i in 0..try_num {
@@ -569,8 +572,8 @@ mod tests {
                 nand = 1;
             }
 
-            let tlwe_a = tlwe::tlweSymEncrypt(mu_a, tlwe::alpha(), &keyLv0);
-            let tlwe_b = tlwe::tlweSymEncrypt(mu_b, tlwe::alpha(), &keyLv0);
+            let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &keyLv0);
+            let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &keyLv0);
             let tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &twist);
             let dec = tlwe::tlweSymDecrypt(&tlwe_nand, &keyLv0);
             dbg!(plain_a);
