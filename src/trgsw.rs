@@ -55,6 +55,7 @@ pub fn external_product(
     const L: usize = params::trgsw_lv1::L;
     const N: usize = params::trgsw_lv1::N;
     for i in 0..L {
+        //let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].a, plan);
         let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].a, plan);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);

@@ -1,4 +1,5 @@
-#include "spqlios-fft.hpp"
+#include "spqlios-fft.h"
+#include <stdio.h>
 
 extern "C" {
     typedef struct {
@@ -14,11 +15,11 @@ extern "C" {
         si->impl.~FFT_Processor_Spqlios();
     }
 
-    void Spqlios_fft_lv1(SpqliosImpl *si, double *res, const uint32_t *src) {
+    void Spqlios_ifft_lv1(SpqliosImpl *si, double *res, const uint32_t *src) {
         si->impl.execute_reverse_torus32(res, src);
     }
 
-    void Spqlios_ifft_lv1(SpqliosImpl *si, uint32_t *res, const double *src) {
+    void Spqlios_fft_lv1(SpqliosImpl *si, uint32_t *res, const double *src) {
         si->impl.execute_direct_torus32(res, src);
     }
 }

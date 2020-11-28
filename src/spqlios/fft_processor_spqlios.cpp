@@ -2,7 +2,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "spqlios-fft.hpp"
+#include "spqlios-fft.h"
 
 using namespace std;
 
