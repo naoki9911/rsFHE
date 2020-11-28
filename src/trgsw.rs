@@ -602,7 +602,7 @@ mod tests {
             b_key.push(trgswSymEncrypt(keyLv0[i], trlwe::alpha(), &keyLv1, &twist));
         }
 
-        let try_num = 10;
+        let try_num = 100;
         let test_vec = generate_testvector();
         let ksk = generate_ksk(&keyLv0, &keyLv1);
         let plain_a = rng.gen::<u32>() % 2;
@@ -623,6 +623,7 @@ mod tests {
         let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &keyLv0);
         let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &keyLv0);
         let mut tlwe_nand = tlwe::TLWELv0::new();
+        println!("Started bechmark");
         let start = Instant::now();
         for i in 0..try_num {
             tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &twist);
