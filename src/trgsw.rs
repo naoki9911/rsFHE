@@ -48,7 +48,7 @@ pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c6
         let BgM: f64 = (Bg() as f64).powf(((1 + i) as f64) * -1.0);
         p_f64.push(BgM);
     }
-    let p_torus = utils::f64_to_u32_torus(&p_f64);
+    let p_torus = utils::f64_to_torus_vec(&p_f64);
 
     let mut plain_zero: Vec<f64> = Vec::new();
     for i in 0..N() {
@@ -230,8 +230,7 @@ pub fn generate_testvector() -> trlwe::TRLWE {
         a: Vec::new(),
         b: Vec::new(),
     };
-    let b_vec: Vec<f64> = vec![0.125];
-    let b_torus = utils::f64_to_u32_torus(&b_vec)[0];
+    let b_torus = utils::f64_to_torus(0.125);
     for i in 0..N() {
         testvec.a.push(0);
         testvec.b.push(b_torus);
@@ -300,7 +299,7 @@ pub fn hom_nand(
     twist: &AlignedVec<c64>,
 ) -> tlwe::TLWELv0 {
     let mut tlwe_nand = -(tlwe_a + tlwe_b);
-    *tlwe_nand.b_mut() = tlwe_nand.b() + utils::f64_to_u32_torus(&vec![0.125])[0];
+    *tlwe_nand.b_mut() = tlwe_nand.b() + utils::f64_to_torus(0.125);
 
     let trlwe = blind_rotate(&tlwe_nand, test_vec, b_key, twist);
     let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
@@ -318,6 +317,7 @@ mod tests {
     use crate::trlwe;
     use crate::utils;
     use rand::Rng;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn test_decomposition() {
@@ -355,7 +355,7 @@ mod tests {
             let c = trlwe::trlweSymEncrypt(&plain_text_enc, alpha(), &key, &twist);
             let c_decomp_1 = decomposition(&c.a);
             let c_decomp_2 = decomposition(&c.b);
-            let h_u32 = utils::f64_to_u32_torus(&h);
+            let h_u32 = utils::f64_to_torus_vec(&h);
             let mut res = trlwe::TRLWE {
                 a: Vec::new(),
                 b: Vec::new(),
@@ -582,5 +582,59 @@ mod tests {
             dbg!(dec);
             assert_eq!(nand, dec);
         }
+    }
+
+    #[test]
+    fn test_hom_nand_bench() {
+        let mut rng = rand::thread_rng();
+        let twist = mulfft::twist_gen(N());
+        let mut keyLv0: Vec<u32> = Vec::new();
+        let mut keyLv1: Vec<u32> = Vec::new();
+        for i in 0..params::tlwe_lv0::N {
+            keyLv0.push((rng.gen::<u8>() % 2) as u32);
+        }
+        for i in 0..N() {
+            keyLv1.push((rng.gen::<u8>() % 2) as u32);
+        }
+
+        let mut b_key: Vec<TRGSW> = Vec::new();
+        for i in 0..keyLv0.len() {
+            b_key.push(trgswSymEncrypt(keyLv0[i], trlwe::alpha(), &keyLv1, &twist));
+        }
+
+        let try_num = 10;
+        let test_vec = generate_testvector();
+        let ksk = generate_ksk(&keyLv0, &keyLv1);
+        let plain_a = rng.gen::<u32>() % 2;
+        let mut mu_a = 0.125;
+        if plain_a == 0 {
+            mu_a = -0.125;
+        }
+        let plain_b = rng.gen::<u32>() % 2;
+        let mut mu_b = 0.125;
+        if plain_b == 0 {
+            mu_b = -0.125;
+        }
+        let mut nand = 0;
+        if (plain_a & plain_b) == 0 {
+            nand = 1;
+        }
+
+        let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &keyLv0);
+        let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &keyLv0);
+        let mut tlwe_nand = tlwe::TLWELv0::new();
+        let start = Instant::now();
+        for i in 0..try_num {
+            tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &twist);
+        }
+        let end = start.elapsed();
+        let exec_ms_per_gate = end.as_millis() as f64 / try_num as f64;
+        println!("exec ms per gate : {} ms", exec_ms_per_gate);
+        let dec = tlwe::tlweSymDecrypt(&tlwe_nand, &keyLv0);
+        dbg!(plain_a);
+        dbg!(plain_b);
+        dbg!(nand);
+        dbg!(dec);
+        assert_eq!(nand, dec);
     }
 }

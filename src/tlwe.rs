@@ -82,9 +82,10 @@ pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv0 {
         tlwe.p[i] = rand_u32;
     }
 
-    let mu = utils::f64_to_u32_torus(&vec![p]);
-    let b = utils::gussian_32bit(&mu, alpha, 1);
-    *tlwe.b_mut() = inner_product.wrapping_add(b[0]);
+    let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
+    let mut rng = rand::thread_rng();
+    let b = utils::gussian_f64(p, &normal_distr, &mut rng);
+    *tlwe.b_mut() = inner_product.wrapping_add(b);
     return tlwe;
 }
 
@@ -125,9 +126,10 @@ pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv1 {
         inner_product = inner_product.wrapping_add(key[i] * rand_u32);
         tlwe.p[i] = rand_u32;
     }
-    let mu = utils::f64_to_u32_torus(&vec![p]);
-    let b = utils::gussian_32bit(&mu, alpha, 1);
-    *tlwe.b_mut() = inner_product.wrapping_add(b[0]);
+    let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
+    let mut rng = rand::thread_rng();
+    let b = utils::gussian_f64(p, &normal_distr, &mut rng);
+    *tlwe.b_mut() = inner_product.wrapping_add(b);
     return tlwe;
 }
 

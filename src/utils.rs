@@ -1,44 +1,77 @@
-use rand_distr::{Distribution, Normal};
+use crate::params::Torus;
+use rand_distr::Distribution;
 
-pub fn f64_to_u32_torus(d: &Vec<f64>) -> Vec<u32> {
-    let mut res: Vec<u32> = Vec::new();
-    for i in 0..d.len() {
-        let torus = (d[i] % 1.0) as f64 * 2u64.pow(32) as f64;
-        res.push((torus as i64) as u32);
-    }
-    return res;
+pub fn f64_to_torus(d: f64) -> Torus {
+    let torus = (d % 1.0) as f64 * 2u64.pow(32) as f64;
+    return (torus as i64) as u32;
 }
 
-pub fn gussian_32bit(mu: &Vec<u32>, alpha: f64, size: usize) -> Vec<u32> {
-    let normal = Normal::new(0.0, alpha).unwrap();
-    let mut vec: Vec<u32> = Vec::new();
-    for i in 0..size {
-        let sample = normal.sample(&mut rand::thread_rng());
-        vec.push(f64_to_u32_torus(&vec![sample])[0].wrapping_add(mu[i]));
-    }
+pub fn f64_to_torus_vec(d: &Vec<f64>) -> Vec<Torus> {
+    return d.iter().map(|&e| f64_to_torus(e)).collect();
+}
 
-    return vec;
+pub fn gussian_torus(
+    mu: Torus,
+    normal_distr: &rand_distr::Normal<f64>,
+    rng: &mut rand::rngs::ThreadRng,
+) -> Torus {
+    let sample = normal_distr.sample(rng);
+    return f64_to_torus(sample).wrapping_add(mu);
+}
+
+pub fn gussian_torus_vec(
+    mu: &Vec<Torus>,
+    normal_distr: &rand_distr::Normal<f64>,
+    rng: &mut rand::rngs::ThreadRng,
+) -> Vec<Torus> {
+    return mu
+        .iter()
+        .map(|&e| gussian_torus(e, normal_distr, rng))
+        .collect();
+}
+
+pub fn gussian_f64(
+    mu: f64,
+    normal_distr: &rand_distr::Normal<f64>,
+    rng: &mut rand::rngs::ThreadRng,
+) -> Torus {
+    let mu_torus = f64_to_torus(mu);
+    return gussian_torus(mu_torus, normal_distr, rng);
+}
+
+pub fn gussian_f64_vec(
+    mu: &Vec<f64>,
+    normal_distr: &rand_distr::Normal<f64>,
+    rng: &mut rand::rngs::ThreadRng,
+) -> Vec<Torus> {
+    return mu
+        .iter()
+        .map(|&e| gussian_torus(f64_to_torus(e), normal_distr, rng))
+        .collect();
 }
 
 #[cfg(test)]
 mod tests {
     use crate::utils::*;
+    use rand_distr::Normal;
 
     #[test]
     fn test_double_to_torust_32bit() {
-        let torus = f64_to_u32_torus(&vec![3.141592]);
+        let torus = f64_to_torus_vec(&vec![3.141592]);
         assert_eq!(torus[0], 608133009);
 
-        let torus2 = f64_to_u32_torus(&vec![2.71828]);
+        let torus2 = f64_to_torus_vec(&vec![2.71828]);
         assert_eq!(torus2[0], 3084989109);
     }
 
     #[test]
     fn test_gussian_32bit() {
-        let torus = gussian_32bit(&vec![12], 0.1, 1);
+        let normal = Normal::new(0.0, 0.1).unwrap();
+        let mut rng = rand::thread_rng();
+        let torus = gussian_torus_vec(&vec![12], &normal, &mut rng);
         assert_eq!(torus.len(), 1);
 
-        let torus2 = gussian_32bit(&vec![12, 11], 0.1, 2);
+        let torus2 = gussian_torus_vec(&vec![12, 11], &normal, &mut rng);
         assert_eq!(torus2.len(), 2);
     }
 }

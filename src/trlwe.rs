@@ -27,7 +27,9 @@ pub fn trlweSymEncrypt(p: &Vec<f64>, alpha: f64, key: &Vec<u32>, twist: &Aligned
     for i in 0..key.len() {
         trlwe.a.push(rng.gen());
     }
-    trlwe.b = utils::gussian_32bit(&utils::f64_to_u32_torus(p), alpha, key.len());
+    let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
+    let mut rng = rand::thread_rng();
+    trlwe.b = utils::gussian_f64_vec(p, &normal_distr, &mut rng);
     let a_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
     let key_i32 = key.iter().map(|&e| e as i32).collect();
     let poly_res = mulfft::polynomial_mul(&a_i32, &key_i32, twist);
