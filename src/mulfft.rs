@@ -124,7 +124,7 @@ pub fn spqlios_poly_mul(a: &Vec<u32>, b: &Vec<u32>, plan: &mut FFTPlan) -> Vec<u
         let aimbim = a_ifft[i + Ns] * b_ifft[i + Ns];
         let arebim = a_ifft[i] * b_ifft[i + Ns];
         mul[i] = a_ifft[i] * b_ifft[i] - aimbim;
-        mul[i + Ns] = a_ifft[i + Ns] + b_ifft[i] + arebim;
+        mul[i + Ns] = a_ifft[i + Ns] * b_ifft[i] + arebim;
     }
     
     return spqlios_fft_1d(&mul, plan);
@@ -139,7 +139,7 @@ pub fn spqlios_poly_mul_1024(a: &[u32; 1024], b: &[u32; 1024], plan: &mut FFTPla
         let aimbim = a_ifft[i + 512] * b_ifft[i + 512];
         let arebim = a_ifft[i] * b_ifft[i + 512];
         mul[i] = a_ifft[i] * b_ifft[i] - aimbim;
-        mul[i + 512] = a_ifft[i + 512] + b_ifft[i] + arebim;
+        mul[i + 512] = a_ifft[i + 512] * b_ifft[i] + arebim;
     }
     
     return spqlios_fft_1d_1024(&mul, plan);
@@ -360,26 +360,24 @@ mod tests {
         }
     }
 
-    //#[test]
-    //fn test_spqlios_poly_mul_1024() {
-    //    let mut a = [0u32; 1024];
-    //    let mut b = [0u32; 1024];
-    //    let mut rng = rand::thread_rng();
-    //    let mut plan = FFTPlan::new(1024);
-    //    for i in 0..1024 {
-    //        a[i] = rng.gen::<u32>();
-    //        b[i] = rng.gen::<u32>() % params::trgsw_lv1::BG as u32;
-    //    }
+    #[test]
+    fn test_spqlios_poly_mul_1024() {
+        let mut a = [0u32; 1024];
+        let mut b = [0u32; 1024];
+        let mut rng = rand::thread_rng();
+        let mut plan = FFTPlan::new(1024);
+        for i in 0..1024 {
+            a[i] = rng.gen::<u32>();
+            b[i] = rng.gen::<u32>() % params::trgsw_lv1::BG as u32;
+        }
 
-    //    let spqlios_res = spqlios_poly_mul_1024(&a, &b, &mut plan);
-    //    let fftw_res = polynomial_mul(&a.iter().map(|&e| e as i32).collect(), &b.iter().map(|&e| e as i32).collect(), &mut plan);
-    //    let res = poly_mul(&a.to_vec(), &b.to_vec());
-    //    for i in 0..1024 {
-    //        //let diff = fftw_res[i] as i32 - spqlios_res[i] as i32;
-    //        println!("{} {} {}", fftw_res[i], spqlios_res[i], res[i]);
-    //        //assert!(diff < 2 && diff > -2); 
-    //    }
-    //}
+        let spqlios_res = spqlios_poly_mul_1024(&a, &b, &mut plan);
+        let res = poly_mul(&a.to_vec(), &b.to_vec());
+        for i in 0..1024 {
+            let diff = res[i] as i32 - spqlios_res[i] as i32;
+            assert!(diff < 2 && diff > -2); 
+        }
+    }
 
     //#[test]
     //fn fft_poly_mul_lv2(){

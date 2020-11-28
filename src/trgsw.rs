@@ -61,17 +61,17 @@ pub fn external_product(
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].a, plan);
+        let tmp = mulfft::spqlios_poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].a, plan);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].b, plan);
+        let tmp = mulfft::spqlios_poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].b, plan);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].b, plan);
+        let tmp = mulfft::spqlios_poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].b, plan);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
