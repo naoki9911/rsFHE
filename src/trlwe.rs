@@ -1,46 +1,53 @@
 use crate::mulfft;
+use crate::params;
 use crate::tlwe;
 use crate::utils;
 use fftw::array::AlignedVec;
 use fftw::types::*;
 use rand::Rng;
+use std::convert::TryInto;
 
-pub struct TRLWE {
-    pub a: Vec<u32>,
-    pub b: Vec<u32>,
+pub struct TRLWELv1 {
+    pub a: [u32; params::trlwe_lv1::N],
+    pub b: [u32; params::trlwe_lv1::N],
 }
 
-const fn N() -> usize {
-    1024
-}
-
-pub const fn alpha() -> f64 {
-    2.98023223876953125e-08
-}
-
-pub fn trlweSymEncrypt(p: &Vec<f64>, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c64>) -> TRLWE {
-    let mut rng = rand::thread_rng();
-    let mut trlwe: TRLWE = TRLWE {
-        a: Vec::new(),
-        b: Vec::new(),
-    };
-    for i in 0..key.len() {
-        trlwe.a.push(rng.gen());
+impl TRLWELv1 {
+    pub fn new() -> TRLWELv1 {
+        return TRLWELv1 {
+            a: [0; params::trlwe_lv1::N],
+            b: [0; params::trlwe_lv1::N],
+        };
     }
+}
+
+pub fn trlweSymEncrypt(
+    p: &Vec<f64>,
+    alpha: f64,
+    key: &Vec<u32>,
+    twist: &AlignedVec<c64>,
+) -> TRLWELv1 {
+    let mut rng = rand::thread_rng();
+    let mut trlwe = TRLWELv1::new();
+    trlwe.a.iter_mut().for_each(|e| *e = rng.gen());
+
     let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
     let mut rng = rand::thread_rng();
-    trlwe.b = utils::gussian_f64_vec(p, &normal_distr, &mut rng);
+    trlwe.b = utils::gussian_f64_vec(p, &normal_distr, &mut rng)
+        .try_into()
+        .unwrap();
     let a_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
     let key_i32 = key.iter().map(|&e| e as i32).collect();
     let poly_res = mulfft::polynomial_mul(&a_i32, &key_i32, twist);
-    for i in 0..trlwe.b.len() {
-        trlwe.b[i] = trlwe.b[i].wrapping_add(poly_res[i]);
+
+    for (bref, rval) in trlwe.b.iter_mut().zip(poly_res.iter()) {
+        *bref = bref.wrapping_add(*rval);
     }
 
     return trlwe;
 }
 
-pub fn trlweSymDecrypt(trlwe: &TRLWE, key: &Vec<u32>, twist: &AlignedVec<c64>) -> Vec<u32> {
+pub fn trlweSymDecrypt(trlwe: &TRLWELv1, key: &Vec<u32>, twist: &AlignedVec<c64>) -> Vec<u32> {
     let c_0_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
     let key_i32 = key.iter().map(|&e| e as i32).collect();
     let poly_res = mulfft::polynomial_mul(&c_0_i32, &key_i32, twist);
@@ -56,14 +63,15 @@ pub fn trlweSymDecrypt(trlwe: &TRLWE, key: &Vec<u32>, twist: &AlignedVec<c64>) -
     return res;
 }
 
-pub fn sample_extract_index(trlwe: &TRLWE, k: usize) -> tlwe::TLWELv1 {
+pub fn sample_extract_index(trlwe: &TRLWELv1, k: usize) -> tlwe::TLWELv1 {
     let mut res = tlwe::TLWELv1::new();
 
-    for i in 0..N() {
+    const N: usize = params::trlwe_lv1::N;
+    for i in 0..N {
         if i <= k {
             res.p[i] = trlwe.a[k - i];
         } else {
-            res.p[i] = u32::MAX - trlwe.a[N() + k - i];
+            res.p[i] = u32::MAX - trlwe.a[N + k - i];
         }
     }
     *res.b_mut() = trlwe.b[k];
@@ -74,6 +82,7 @@ pub fn sample_extract_index(trlwe: &TRLWE, k: usize) -> tlwe::TLWELv1 {
 #[cfg(test)]
 mod tests {
     use crate::mulfft;
+    use crate::params;
     use crate::tlwe;
     use crate::trlwe;
     use rand::Rng;
@@ -85,12 +94,13 @@ mod tests {
         // Generate 1024bits secret key
         let mut key: Vec<u32> = Vec::new();
         let mut key_dirty: Vec<u32> = Vec::new();
-        for i in 0..trlwe::N() {
+        const N: usize = params::trlwe_lv1::N;
+        for i in 0..N {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(trlwe::N());
+        let twist = mulfft::twist_gen(N);
         let mut correct = 0;
         let try_num = 500;
 
@@ -98,7 +108,7 @@ mod tests {
             let mut plain_text_enc: Vec<f64> = Vec::new();
             let mut plain_text: Vec<u32> = Vec::new();
 
-            for j in 0..trlwe::N() {
+            for j in 0..N {
                 let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -108,11 +118,11 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, trlwe::alpha(), &key, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &twist);
             let dec = trlwe::trlweSymDecrypt(&c, &key, &twist);
             let dec_dirty = trlwe::trlweSymDecrypt(&c, &key_dirty, &twist);
 
-            for j in 0..trlwe::N() {
+            for j in 0..N {
                 assert_eq!(plain_text[j], dec[j]);
                 if plain_text[j] != dec_dirty[j] {
                     correct += 1;
@@ -120,7 +130,7 @@ mod tests {
             }
         }
 
-        let probability = correct as f64 / (try_num * trlwe::N()) as f64;
+        let probability = correct as f64 / (try_num * N) as f64;
         assert!(probability - 0.50 < 0.1);
     }
 
@@ -131,12 +141,13 @@ mod tests {
         // Generate 1024bits secret key
         let mut key: Vec<u32> = Vec::new();
         let mut key_dirty: Vec<u32> = Vec::new();
-        for i in 0..trlwe::N() {
+        const N: usize = params::trlwe_lv1::N;
+        for i in 0..N {
             key.push((rng.gen::<u8>() % 2) as u32);
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(trlwe::N());
+        let twist = mulfft::twist_gen(N);
         let mut correct = 0;
         let try_num = 10;
 
@@ -144,7 +155,7 @@ mod tests {
             let mut plain_text_enc: Vec<f64> = Vec::new();
             let mut plain_text: Vec<u32> = Vec::new();
 
-            for j in 0..trlwe::N() {
+            for j in 0..N {
                 let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -154,9 +165,9 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, trlwe::alpha(), &key, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &twist);
 
-            for j in 0..trlwe::N() {
+            for j in 0..N {
                 let tlwe = trlwe::sample_extract_index(&c, j);
                 let dec = tlwe::tlweLv1SymDecrypt(&tlwe, &key);
                 let dec_dirty = tlwe::tlweLv1SymDecrypt(&tlwe, &key_dirty);
@@ -167,7 +178,7 @@ mod tests {
             }
         }
 
-        let probability = correct as f64 / (try_num * trlwe::N()) as f64;
+        let probability = correct as f64 / (try_num * N) as f64;
         assert!(probability - 0.50 < 0.1);
     }
 }
