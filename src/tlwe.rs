@@ -51,6 +51,26 @@ impl Neg for TLWELv0 {
     }
 }
 
+pub struct TLWELv1 {
+    pub p: [u32; params::tlwe_lv1::N + 1],
+}
+
+impl TLWELv1 {
+    pub fn new() -> TLWELv1 {
+        return TLWELv1 {
+            p: [0; params::tlwe_lv1::N + 1],
+        };
+    }
+
+    pub fn b(&self) -> u32 {
+        return self.p[params::tlwe_lv1::N];
+    }
+
+    pub fn b_mut(&mut self) -> &mut u32 {
+        return &mut self.p[params::tlwe_lv1::N];
+    }
+}
+
 pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv0 {
     let mut rng = rand::thread_rng();
     let mut tlwe = TLWELv0::new();
@@ -64,7 +84,7 @@ pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv0 {
 
     let mu = utils::f64_to_u32_torus(&vec![p]);
     let b = utils::gussian_32bit(&mu, alpha, 1);
-    tlwe.p[params::tlwe_lv0::N] = inner_product.wrapping_add(b[0]);
+    *tlwe.b_mut() = inner_product.wrapping_add(b[0]);
     return tlwe;
 }
 
@@ -82,7 +102,7 @@ pub fn tlweSymDecrypt(tlwe: &TLWELv0, key: &Vec<u32>) -> u32 {
     }
 }
 
-pub fn tlweLv1SymDecrypt(tlwe: &trlwe::TLWELv1, key: &Vec<u32>) -> u32 {
+pub fn tlweLv1SymDecrypt(tlwe: &TLWELv1, key: &Vec<u32>) -> u32 {
     let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         inner_product = inner_product.wrapping_add(tlwe.p[i] * key[i]);
@@ -96,18 +116,18 @@ pub fn tlweLv1SymDecrypt(tlwe: &trlwe::TLWELv1, key: &Vec<u32>) -> u32 {
     }
 }
 
-pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> trlwe::TLWELv1 {
+pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv1 {
     let mut rng = rand::thread_rng();
-    let mut tlwe: trlwe::TLWELv1 = trlwe::TLWELv1 { p: Vec::new() };
+    let mut tlwe = TLWELv1::new();
     let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         let rand_u32: u32 = rng.gen();
         inner_product = inner_product.wrapping_add(key[i] * rand_u32);
-        tlwe.p.push(rand_u32);
+        tlwe.p[i] = rand_u32;
     }
     let mu = utils::f64_to_u32_torus(&vec![p]);
     let b = utils::gussian_32bit(&mu, alpha, 1);
-    tlwe.p.push(inner_product.wrapping_add(b[0]));
+    *tlwe.b_mut() = inner_product.wrapping_add(b[0]);
     return tlwe;
 }
 

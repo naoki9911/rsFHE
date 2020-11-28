@@ -241,7 +241,7 @@ pub fn generate_testvector() -> trlwe::TRLWE {
 }
 
 pub fn identity_key_switching(
-    src: &trlwe::TLWELv1,
+    src: &tlwe::TLWELv1,
     ks: &Vec<Vec<Vec<tlwe::TLWELv0>>>,
 ) -> tlwe::TLWELv0 {
     let mut res = tlwe::TLWELv0::new();

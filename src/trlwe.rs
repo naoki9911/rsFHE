@@ -1,4 +1,5 @@
 use crate::mulfft;
+use crate::tlwe;
 use crate::utils;
 use fftw::array::AlignedVec;
 use fftw::types::*;
@@ -7,10 +8,6 @@ use rand::Rng;
 pub struct TRLWE {
     pub a: Vec<u32>,
     pub b: Vec<u32>,
-}
-
-pub struct TLWELv1 {
-    pub p: Vec<u32>,
 }
 
 const fn N() -> usize {
@@ -57,17 +54,17 @@ pub fn trlweSymDecrypt(trlwe: &TRLWE, key: &Vec<u32>, twist: &AlignedVec<c64>) -
     return res;
 }
 
-pub fn sample_extract_index(trlwe: &TRLWE, k: usize) -> TLWELv1 {
-    let mut res = TLWELv1 { p: Vec::new() };
+pub fn sample_extract_index(trlwe: &TRLWE, k: usize) -> tlwe::TLWELv1 {
+    let mut res = tlwe::TLWELv1::new();
 
     for i in 0..N() {
         if i <= k {
-            res.p.push(trlwe.a[k - i]);
+            res.p[i] = trlwe.a[k - i];
         } else {
-            res.p.push(u32::MAX - trlwe.a[N() + k - i]);
+            res.p[i] = u32::MAX - trlwe.a[N() + k - i];
         }
     }
-    res.p.push(trlwe.b[k]);
+    *res.b_mut() = trlwe.b[k];
 
     return res;
 }
