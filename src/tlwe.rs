@@ -59,6 +59,21 @@ pub fn tlweLv1SymDecrypt(tlwe: &trlwe::TLWELv1, key :&Vec<u32>)  -> u32 {
     return tlweSymDecrypt(&tlwelv0, key);
 }
 
+pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> trlwe::TLWELv1 {
+    let mut rng = rand::thread_rng();
+    let mut tlwe: trlwe::TLWELv1 = trlwe::TLWELv1 { p: Vec::new() };
+    let mut inner_product: u32 = 0;
+    for i in 0..key.len() {
+        let rand_u32: u32 = rng.gen();
+        inner_product = inner_product.wrapping_add(key[i] * rand_u32);
+        tlwe.p.push(rand_u32);
+    }
+    let mu = utils::f64_to_u32_torus(&vec![p]);
+    let b = utils::gussian_32bit(&mu, alpha, 1);
+    tlwe.p.push(inner_product.wrapping_add(b[0]));
+    return tlwe;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::tlwe::*;
