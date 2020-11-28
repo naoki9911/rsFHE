@@ -19,7 +19,7 @@ impl TRGSWLv1 {
     }
 }
 
-pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c64>) -> TRGSWLv1 {
+pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, plan: &mut mulfft::FFTPlan) -> TRGSWLv1 {
     let mut p_f64: Vec<f64> = Vec::new();
     const L: usize = params::trgsw_lv1::L;
     for i in 0..L {
@@ -34,7 +34,7 @@ pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c6
     }
 
     let mut trgsw = TRGSWLv1::new();
-    trgsw.trlwe.iter_mut().for_each(|e| *e = trlwe::trlweSymEncrypt(&plain_zero, alpha, key, twist));
+    trgsw.trlwe.iter_mut().for_each(|e| *e = trlwe::trlweSymEncrypt(&plain_zero, alpha, key, plan));
 
     for i in 0..L {
         trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
@@ -46,7 +46,7 @@ pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c6
 pub fn external_product(
     trgsw: &TRGSWLv1,
     trlwe: &trlwe::TRLWELv1,
-    twist: &AlignedVec<c64>,
+    plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
     let dec_a = decomposition(&trlwe.a);
     let dec_b = decomposition(&trlwe.b);
@@ -55,22 +55,22 @@ pub fn external_product(
     const L: usize = params::trgsw_lv1::L;
     const N: usize = params::trgsw_lv1::N;
     for i in 0..L {
-        let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].a, twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].a, plan);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].a, twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].a, plan);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].b, twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].b, plan);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].b, twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].b, plan);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
@@ -106,7 +106,7 @@ pub fn cmux(
     in1: &trlwe::TRLWELv1,
     in2: &trlwe::TRLWELv1,
     cond: &TRGSWLv1,
-    twist: &AlignedVec<c64>,
+    plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
     let mut tmp = trlwe::TRLWELv1::new();
     const N: usize = params::trgsw_lv1::N;
@@ -115,7 +115,7 @@ pub fn cmux(
         tmp.b[i] = in2.b[i].wrapping_sub(in1.b[i]);
     }
 
-    let tmp2 = external_product(cond, &tmp, twist);
+    let tmp2 = external_product(cond, &tmp, plan);
     let mut res = trlwe::TRLWELv1::new();
     for i in 0..N {
         res.a[i] = tmp2.a[i].wrapping_add(in1.a[i]);
@@ -141,7 +141,7 @@ pub fn blind_rotate(
     src: &tlwe::TLWELv0,
     testvec: &trlwe::TRLWELv1,
     bkey: &Vec<TRGSWLv1>,
-    twist: &AlignedVec<c64>,
+    plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
     const N: usize = params::trgsw_lv1::N;
     const NBIT: usize = params::trgsw_lv1::NBIT;
@@ -158,7 +158,7 @@ pub fn blind_rotate(
             a: poly_mul_with_X_k(&res.a, a_tilda),
             b: poly_mul_with_X_k(&res.b, a_tilda),
         };
-        res = cmux(&res, &res2, &bkey[i as usize], twist);
+        res = cmux(&res, &res2, &bkey[i as usize], plan);
     }
 
     return res;
@@ -260,12 +260,12 @@ pub fn hom_nand(
     ksk: &Vec<Vec<Vec<tlwe::TLWELv0>>>,
     b_key: &Vec<TRGSWLv1>,
     test_vec: &trlwe::TRLWELv1,
-    twist: &AlignedVec<c64>,
+    plan :&mut mulfft::FFTPlan,
 ) -> tlwe::TLWELv0 {
     let mut tlwe_nand = -(tlwe_a + tlwe_b);
     *tlwe_nand.b_mut() = tlwe_nand.b() + utils::f64_to_torus(0.125);
 
-    let trlwe = blind_rotate(&tlwe_nand, test_vec, b_key, twist);
+    let trlwe = blind_rotate(&tlwe_nand, test_vec, b_key, plan);
     let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
     let tlwe_bootstrapped = identity_key_switching(&tlwe_lv1, ksk);
     return tlwe_bootstrapped;
@@ -294,7 +294,7 @@ mod tests {
             key.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(N);
         let mut h: Vec<f64> = Vec::new();
         let try_num = 1000;
 
@@ -317,7 +317,7 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
             let c_decomp_1 = decomposition(&c.a);
             let c_decomp_2 = decomposition(&c.b);
             let h_u32 = utils::f64_to_torus_vec(&h);
@@ -333,7 +333,7 @@ mod tests {
                 res.b[j] = tmp1;
             }
 
-            let dec = trlwe::trlweSymDecrypt(&res, &key, &twist);
+            let dec = trlwe::trlweSymDecrypt(&res, &key, &mut plan);
 
             for j in 0..N {
                 assert_eq!(plain_text[j], dec[j]);
@@ -352,7 +352,7 @@ mod tests {
             key.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(1024);
         let try_num = 100;
 
         for i in 0..try_num {
@@ -369,11 +369,11 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &twist);
-            let p = trlwe::trlweSymDecrypt(&c, &key, &twist);
-            let trgsw_true = trgswSymEncrypt(1, params::trgsw_lv1::ALPHA, &key, &twist);
-            let ext_c = external_product(&trgsw_true, &c, &twist);
-            let dec = trlwe::trlweSymDecrypt(&ext_c, &key, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
+            let p = trlwe::trlweSymDecrypt(&c, &key, &mut plan);
+            let trgsw_true = trgswSymEncrypt(1, params::trgsw_lv1::ALPHA, &key, &mut plan);
+            let ext_c = external_product(&trgsw_true, &c, &mut plan);
+            let dec = trlwe::trlweSymDecrypt(&ext_c, &key, &mut plan);
 
             for j in 0..N {
                 assert_eq!(plain_text[j], p[j]);
@@ -393,7 +393,7 @@ mod tests {
             key.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(N);
         let try_num = 100;
         for i in 0..try_num {
             let mut plain_text_enc_1: Vec<f64> = Vec::new();
@@ -420,14 +420,14 @@ mod tests {
                 plain_text_enc_2.push(mu);
             }
             const ALPHA: f64 = params::trgsw_lv1::ALPHA;
-            let c1 = trlwe::trlweSymEncrypt(&plain_text_enc_1, ALPHA, &key, &twist);
-            let c2 = trlwe::trlweSymEncrypt(&plain_text_enc_2, ALPHA, &key, &twist);
-            let trgsw_true = trgswSymEncrypt(1, ALPHA, &key, &twist);
-            let trgsw_false = trgswSymEncrypt(0, ALPHA, &key, &twist);
-            let enc_1 = cmux(&c1, &c2, &trgsw_false, &twist);
-            let enc_2 = cmux(&c1, &c2, &trgsw_true, &twist);
-            let dec_1 = trlwe::trlweSymDecrypt(&enc_1, &key, &twist);
-            let dec_2 = trlwe::trlweSymDecrypt(&enc_2, &key, &twist);
+            let c1 = trlwe::trlweSymEncrypt(&plain_text_enc_1, ALPHA, &key, &mut plan);
+            let c2 = trlwe::trlweSymEncrypt(&plain_text_enc_2, ALPHA, &key, &mut plan);
+            let trgsw_true = trgswSymEncrypt(1, ALPHA, &key, &mut plan);
+            let trgsw_false = trgswSymEncrypt(0, ALPHA, &key, &mut plan);
+            let enc_1 = cmux(&c1, &c2, &trgsw_false, &mut plan);
+            let enc_2 = cmux(&c1, &c2, &trgsw_true, &mut plan);
+            let dec_1 = trlwe::trlweSymDecrypt(&enc_1, &key, &mut plan);
+            let dec_2 = trlwe::trlweSymDecrypt(&enc_2, &key, &mut plan);
             for j in 0..N {
                 assert_eq!(plain_text_1[j], dec_1[j]);
                 assert_eq!(plain_text_2[j], dec_2[j]);
@@ -439,7 +439,7 @@ mod tests {
     fn test_blind_rotate() {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(N);
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
         for i in 0..params::tlwe_lv0::N {
@@ -455,7 +455,7 @@ mod tests {
                 keyLv0[i],
                 params::trgsw_lv1::ALPHA,
                 &keyLv1,
-                &twist,
+                &mut plan,
             ));
         }
 
@@ -469,7 +469,7 @@ mod tests {
             }
 
             let tlwe = tlwe::tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &keyLv0);
-            let trlwe = blind_rotate(&tlwe, &test_vec, &bKey, &twist);
+            let trlwe = blind_rotate(&tlwe, &test_vec, &bKey, &mut plan);
             let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
             let dec = tlwe::tlweLv1SymDecrypt(&tlwe_lv1, &keyLv1);
             assert_eq!(plain_text, dec);
@@ -511,7 +511,7 @@ mod tests {
     fn test_hom_nand() {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(N);
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
         for i in 0..params::tlwe_lv0::N {
@@ -527,7 +527,7 @@ mod tests {
                 keyLv0[i],
                 params::trgsw_lv1::ALPHA,
                 &keyLv1,
-                &twist,
+                &mut plan,
             ));
         }
 
@@ -552,7 +552,7 @@ mod tests {
 
             let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &keyLv0);
             let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &keyLv0);
-            let tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &twist);
+            let tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &mut plan);
             let dec = tlwe::tlweSymDecrypt(&tlwe_nand, &keyLv0);
             dbg!(plain_a);
             dbg!(plain_b);
@@ -566,7 +566,7 @@ mod tests {
     fn test_hom_nand_bench() {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(N);
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
         for i in 0..params::tlwe_lv0::N {
@@ -582,7 +582,7 @@ mod tests {
                 keyLv0[i],
                 params::trgsw_lv1::ALPHA,
                 &keyLv1,
-                &twist,
+                &mut plan,
             ));
         }
 
@@ -610,7 +610,7 @@ mod tests {
         println!("Started bechmark");
         let start = Instant::now();
         for i in 0..try_num {
-            tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &twist);
+            tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &mut plan);
         }
         let end = start.elapsed();
         let exec_ms_per_gate = end.as_millis() as f64 / try_num as f64;

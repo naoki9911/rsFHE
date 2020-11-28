@@ -2,8 +2,6 @@ use crate::mulfft;
 use crate::params;
 use crate::tlwe;
 use crate::utils;
-use fftw::array::AlignedVec;
-use fftw::types::*;
 use rand::Rng;
 use std::convert::TryInto;
 
@@ -26,7 +24,7 @@ pub fn trlweSymEncrypt(
     p: &Vec<f64>,
     alpha: f64,
     key: &Vec<u32>,
-    twist: &AlignedVec<c64>,
+    plan: &mut mulfft::FFTPlan,
 ) -> TRLWELv1 {
     let mut rng = rand::thread_rng();
     let mut trlwe = TRLWELv1::new();
@@ -39,7 +37,7 @@ pub fn trlweSymEncrypt(
         .unwrap();
     let a_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
     let key_i32 = key.iter().map(|&e| e as i32).collect();
-    let poly_res = mulfft::polynomial_mul(&a_i32, &key_i32, twist);
+    let poly_res = mulfft::polynomial_mul(&a_i32, &key_i32, plan);
 
     for (bref, rval) in trlwe.b.iter_mut().zip(poly_res.iter()) {
         *bref = bref.wrapping_add(*rval);
@@ -48,10 +46,10 @@ pub fn trlweSymEncrypt(
     return trlwe;
 }
 
-pub fn trlweSymDecrypt(trlwe: &TRLWELv1, key: &Vec<u32>, twist: &AlignedVec<c64>) -> Vec<u32> {
+pub fn trlweSymDecrypt(trlwe: &TRLWELv1, key: &Vec<u32>, plan: &mut mulfft::FFTPlan) -> Vec<u32> {
     let c_0_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
     let key_i32 = key.iter().map(|&e| e as i32).collect();
-    let poly_res = mulfft::polynomial_mul(&c_0_i32, &key_i32, twist);
+    let poly_res = mulfft::polynomial_mul(&c_0_i32, &key_i32, plan);
     let mut res: Vec<u32> = Vec::new();
     for i in 0..trlwe.a.len() {
         let value = (trlwe.b[i].wrapping_sub(poly_res[i])) as i32;
@@ -101,7 +99,7 @@ mod tests {
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(N);
         let mut correct = 0;
         let try_num = 500;
 
@@ -119,9 +117,9 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &twist);
-            let dec = trlwe::trlweSymDecrypt(&c, &key, &twist);
-            let dec_dirty = trlwe::trlweSymDecrypt(&c, &key_dirty, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
+            let dec = trlwe::trlweSymDecrypt(&c, &key, &mut plan);
+            let dec_dirty = trlwe::trlweSymDecrypt(&c, &key_dirty, &mut plan);
 
             for j in 0..N {
                 assert_eq!(plain_text[j], dec[j]);
@@ -148,7 +146,7 @@ mod tests {
             key_dirty.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let twist = mulfft::twist_gen(N);
+        let mut plan = mulfft::FFTPlan::new(N);
         let mut correct = 0;
         let try_num = 10;
 
@@ -166,7 +164,7 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &twist);
+            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
 
             for j in 0..N {
                 let tlwe = trlwe::sample_extract_index(&c, j);
