@@ -145,24 +145,16 @@ pub fn blind_rotate(
     const NBIT: usize = params::trgsw_lv1::NBIT;
     let b_tilda = 2 * N - (((src.b() as usize) + (1 << (31 - NBIT - 1))) >> (32 - NBIT - 1));
     let mut res = trlwe::TRLWELv1 {
-        a: poly_mul_with_X_k(&testvec.a.to_vec(), b_tilda)
-            .try_into()
-            .unwrap(),
-        b: poly_mul_with_X_k(&testvec.b.to_vec(), b_tilda)
-            .try_into()
-            .unwrap(),
+        a: poly_mul_with_X_k(&testvec.a, b_tilda),
+        b: poly_mul_with_X_k(&testvec.b, b_tilda),
     };
 
     for i in 0..params::tlwe_lv0::N {
         let a_tilda =
             ((src.p[i as usize].wrapping_add((1 << (31 - NBIT - 1)))) >> (32 - NBIT - 1)) as usize;
         let res2 = trlwe::TRLWELv1 {
-            a: poly_mul_with_X_k(&res.a.to_vec(), a_tilda)
-                .try_into()
-                .unwrap(),
-            b: poly_mul_with_X_k(&res.b.to_vec(), a_tilda)
-                .try_into()
-                .unwrap(),
+            a: poly_mul_with_X_k(&res.a, a_tilda),
+            b: poly_mul_with_X_k(&res.b, a_tilda),
         };
         res = cmux(&res, &res2, &bkey[i as usize], twist);
     }
@@ -170,13 +162,10 @@ pub fn blind_rotate(
     return res;
 }
 
-pub fn poly_mul_with_X_k(a: &Vec<u32>, k: usize) -> Vec<u32> {
-    let N = a.len();
+pub fn poly_mul_with_X_k(a: &[u32; params::trgsw_lv1::N], k: usize) -> [u32; params::trgsw_lv1::N] {
+    const N:usize = params::trgsw_lv1::N;
 
-    let mut res: Vec<u32> = Vec::new();
-    for i in 0..N {
-        res.push(0);
-    }
+    let mut res:[u32; params::trgsw_lv1::N] = [0; params::trgsw_lv1::N];
 
     if k < N {
         for i in 0..(N - k) {
