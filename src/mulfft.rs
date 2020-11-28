@@ -76,6 +76,27 @@ pub fn polynomial_mul_u32(a: &Vec<u32>, b: &Vec<u32>, twist: &AlignedVec<c64>) -
     return polynomial_mul(&a_i32, &b_i32, twist);
 }
 
+pub fn polynomial_mul_u32_1024(a: &[u32; 1024], b: &[u32; 1024], twist: &AlignedVec<c64>) -> [u32; 1024] {
+    let a_f64 = a.iter().map(|&e| (e as i32) as f64).collect();
+    let b_f64 = b.iter().map(|&e| (e as i32) as f64).collect();
+    let a_fft = twist_fft_1d(&a_f64, twist);
+    let b_fft = twist_fft_1d(&b_f64, twist);
+
+    let n = a_fft.len();
+    let mut mul: AlignedVec<c64> = AlignedVec::new(n);
+    for i in 0..n {
+        mul[i] = a_fft[i] * b_fft[i];
+    }
+
+    let res_f64 = twist_ifft_1d(&mut mul, twist);
+    let mut res:[u32; 1024] = [0; 1024];
+    let dividor:i64 = 2i64.pow(32);
+    for (rref, f64val) in res.iter_mut().zip(res_f64.iter()) {
+        *rref = ((f64val.round()) as i64 % dividor) as u32;
+    }
+    return res;
+}
+
 pub fn poly_mul(a: &Vec<u32>, b: &Vec<u32>) -> Vec<u32> {
     let N = a.len();
     let mut res: Vec<u32> = Vec::new();

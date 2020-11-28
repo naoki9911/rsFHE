@@ -7,11 +7,19 @@ use fftw::array::AlignedVec;
 use fftw::types::*;
 use std::convert::TryInto;
 
-pub struct TRGSW {
-    trlwe: Vec<trlwe::TRLWELv1>,
+pub struct TRGSWLv1 {
+    trlwe: [trlwe::TRLWELv1; params::trgsw_lv1::L * 2],
 }
 
-pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c64>) -> TRGSW {
+impl TRGSWLv1 {
+    pub fn new() -> TRGSWLv1 {
+        return TRGSWLv1 {
+            trlwe: [trlwe::TRLWELv1::new(); params::trgsw_lv1::L*2],
+        }
+    }
+}
+
+pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c64>) -> TRGSWLv1 {
     let mut p_f64: Vec<f64> = Vec::new();
     const L: usize = params::trgsw_lv1::L;
     for i in 0..L {
@@ -25,13 +33,8 @@ pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c6
         plain_zero.push(0.0);
     }
 
-    let mut trgsw = TRGSW { trlwe: Vec::new() };
-
-    for i in 0..L * 2 {
-        trgsw
-            .trlwe
-            .push(trlwe::trlweSymEncrypt(&plain_zero, alpha, &key, &twist));
-    }
+    let mut trgsw = TRGSWLv1::new();
+    trgsw.trlwe.iter_mut().for_each(|e| *e = trlwe::trlweSymEncrypt(&plain_zero, alpha, key, twist));
 
     for i in 0..L {
         trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
@@ -41,33 +44,33 @@ pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, twist: &AlignedVec<c6
 }
 
 pub fn external_product(
-    trgsw: &TRGSW,
+    trgsw: &TRGSWLv1,
     trlwe: &trlwe::TRLWELv1,
     twist: &AlignedVec<c64>,
 ) -> trlwe::TRLWELv1 {
-    let dec_a = decomposition(&trlwe.a.to_vec());
-    let dec_b = decomposition(&trlwe.b.to_vec());
+    let dec_a = decomposition(&trlwe.a);
+    let dec_b = decomposition(&trlwe.b);
     let mut res = trlwe::TRLWELv1::new();
 
     const L: usize = params::trgsw_lv1::L;
     const N: usize = params::trgsw_lv1::N;
     for i in 0..L {
-        let tmp = mulfft::polynomial_mul_u32(&dec_a[i], &trgsw.trlwe[i].a.to_vec(), twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].a, twist);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i + L].a.to_vec(), twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].a, twist);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32(&dec_a[i], &trgsw.trlwe[i].b.to_vec(), twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].b, twist);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::polynomial_mul_u32(&dec_b[i], &trgsw.trlwe[i + L].b.to_vec(), twist);
+        let tmp = mulfft::polynomial_mul_u32_1024(&dec_b[i], &trgsw.trlwe[i + L].b, twist);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
@@ -76,23 +79,22 @@ pub fn external_product(
     return res;
 }
 
-pub fn decomposition(a: &Vec<u32>) -> Vec<Vec<u32>> {
+pub fn decomposition(a: &[u32; params::trgsw_lv1::N]) -> [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L] {
     let offset = gen_offset();
 
     let mut a_tilda: Vec<u32> = Vec::new();
-    let mut res: Vec<Vec<u32>> = Vec::new();
+    let mut res: [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L] = [[0; params::trgsw_lv1::N]; params::trgsw_lv1::L];
 
     for i in 0..params::trgsw_lv1::N {
         a_tilda.push(a[i as usize].wrapping_add(offset));
     }
 
     for i in 1..(params::trgsw_lv1::L + 1) as u32 {
-        res.push(Vec::new());
         for j in 0..params::trgsw_lv1::N {
             let tmp = ((a_tilda[j as usize] >> (32 - params::trgsw_lv1::BGBIT * i))
                 & (params::trgsw_lv1::BG - 1))
                 .wrapping_sub(params::trgsw_lv1::BG / 2);
-            res[(i - 1) as usize].push(tmp)
+            res[(i - 1) as usize][j] = tmp;
         }
     }
 
@@ -103,7 +105,7 @@ pub fn decomposition(a: &Vec<u32>) -> Vec<Vec<u32>> {
 pub fn cmux(
     in1: &trlwe::TRLWELv1,
     in2: &trlwe::TRLWELv1,
-    cond: &TRGSW,
+    cond: &TRGSWLv1,
     twist: &AlignedVec<c64>,
 ) -> trlwe::TRLWELv1 {
     let mut tmp = trlwe::TRLWELv1::new();
@@ -138,7 +140,7 @@ pub fn gen_offset() -> u32 {
 pub fn blind_rotate(
     src: &tlwe::TLWELv0,
     testvec: &trlwe::TRLWELv1,
-    bkey: &Vec<TRGSW>,
+    bkey: &Vec<TRGSWLv1>,
     twist: &AlignedVec<c64>,
 ) -> trlwe::TRLWELv1 {
     const N: usize = params::trgsw_lv1::N;
@@ -256,7 +258,7 @@ pub fn hom_nand(
     tlwe_a: &tlwe::TLWELv0,
     tlwe_b: &tlwe::TLWELv0,
     ksk: &Vec<Vec<Vec<tlwe::TLWELv0>>>,
-    b_key: &Vec<TRGSW>,
+    b_key: &Vec<TRGSWLv1>,
     test_vec: &trlwe::TRLWELv1,
     twist: &AlignedVec<c64>,
 ) -> tlwe::TLWELv0 {
@@ -316,8 +318,8 @@ mod tests {
             }
 
             let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &twist);
-            let c_decomp_1 = decomposition(&c.a.to_vec());
-            let c_decomp_2 = decomposition(&c.b.to_vec());
+            let c_decomp_1 = decomposition(&c.a);
+            let c_decomp_2 = decomposition(&c.b);
             let h_u32 = utils::f64_to_torus_vec(&h);
             let mut res = trlwe::TRLWELv1::new();
             for j in 0..N {
@@ -447,7 +449,7 @@ mod tests {
             keyLv1.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let mut bKey: Vec<TRGSW> = Vec::new();
+        let mut bKey: Vec<TRGSWLv1> = Vec::new();
         for i in 0..keyLv0.len() {
             bKey.push(trgswSymEncrypt(
                 keyLv0[i],
@@ -519,7 +521,7 @@ mod tests {
             keyLv1.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let mut b_key: Vec<TRGSW> = Vec::new();
+        let mut b_key: Vec<TRGSWLv1> = Vec::new();
         for i in 0..keyLv0.len() {
             b_key.push(trgswSymEncrypt(
                 keyLv0[i],
@@ -574,7 +576,7 @@ mod tests {
             keyLv1.push((rng.gen::<u8>() % 2) as u32);
         }
 
-        let mut b_key: Vec<TRGSW> = Vec::new();
+        let mut b_key: Vec<TRGSWLv1> = Vec::new();
         for i in 0..keyLv0.len() {
             b_key.push(trgswSymEncrypt(
                 keyLv0[i],

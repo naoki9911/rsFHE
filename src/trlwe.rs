@@ -7,6 +7,7 @@ use fftw::types::*;
 use rand::Rng;
 use std::convert::TryInto;
 
+#[derive(Debug, Copy, Clone)]
 pub struct TRLWELv1 {
     pub a: [u32; params::trlwe_lv1::N],
     pub b: [u32; params::trlwe_lv1::N],
