@@ -105,7 +105,7 @@ pub fn gen_key_switching_key(secret_key: &SecretKey) -> KeySwitchingKey {
                 let p = ((k as u32 * secret_key.key_lv1[i] as u32) as f64)
                     / ((1 << ((j + 1) * BASEBIT)) as f64);
                 let idx = (TRGSWLV1_BASE * TRGSWLV1_IKS_T * i) + (TRGSWLV1_BASE * j) + k;
-                res[idx] = tlwe::tlweSymEncrypt(p, params::KSK_ALPHA, &secret_key.key_lv0);
+                res[idx] = tlwe::TLWELv0::encrypt_f64(p, params::KSK_ALPHA, &secret_key.key_lv0);
             }
         }
     }

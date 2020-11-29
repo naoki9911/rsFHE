@@ -416,16 +416,13 @@ mod tests {
 
         let try_num = 10;
         for i in 0..try_num {
-            let plain_text = rng.gen::<u32>() % 2;
-            let mut mu = 0.125;
-            if plain_text == 0 {
-                mu = -0.125;
-            }
+            let plain_text = rng.gen::<bool>();
 
-            let tlwe = tlwe::tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &key.key_lv0);
+            let tlwe =
+                tlwe::TLWELv0::encrypt_bool(plain_text, params::tlwe_lv0::ALPHA, &key.key_lv0);
             let trlwe = blind_rotate(&tlwe, &cloud_key, &mut plan);
             let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
-            let dec = tlwe::tlweLv1SymDecrypt(&tlwe_lv1, &key.key_lv1);
+            let dec = tlwe_lv1.decrypt_bool(&key.key_lv1);
             assert_eq!(plain_text, dec);
         }
     }
@@ -440,15 +437,12 @@ mod tests {
 
         let try_num = 100;
         for i in 0..try_num {
-            let plain_text = rng.gen::<u32>() % 2;
-            let mut mu = 0.125;
-            if plain_text == 0 {
-                mu = -0.125;
-            }
+            let plain_text = rng.gen::<bool>();
 
-            let tlwe_lv1 = tlwe::tlweLv1SymEncrypt(mu, params::tlwe_lv0::ALPHA, &key.key_lv1);
+            let tlwe_lv1 =
+                tlwe::TLWELv1::encrypt_bool(plain_text, params::tlwe_lv1::ALPHA, &key.key_lv1);
             let tlwe_lv0 = identity_key_switching(&tlwe_lv1, &cloud_key.key_switching_key);
-            let dec = tlwe::tlweSymDecrypt(&tlwe_lv0, &key.key_lv0);
+            let dec = tlwe_lv0.decrypt_bool(&key.key_lv0);
             assert_eq!(plain_text, dec);
         }
     }
@@ -463,25 +457,16 @@ mod tests {
 
         let try_num = 100;
         for i in 0..try_num {
-            let plain_a = rng.gen::<u32>() % 2;
-            let mut mu_a = 0.125;
-            if plain_a == 0 {
-                mu_a = -0.125;
-            }
-            let plain_b = rng.gen::<u32>() % 2;
-            let mut mu_b = 0.125;
-            if plain_b == 0 {
-                mu_b = -0.125;
-            }
-            let mut nand = 0;
-            if (plain_a & plain_b) == 0 {
-                nand = 1;
-            }
+            let plain_a = rng.gen::<bool>();
+            let plain_b = rng.gen::<bool>();
+            let nand = !(plain_a & plain_b);
 
-            let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &key.key_lv0);
-            let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &key.key_lv0);
+            let tlwe_a =
+                tlwe::TLWELv0::encrypt_bool(plain_a, params::tlwe_lv0::ALPHA, &key.key_lv0);
+            let tlwe_b =
+                tlwe::TLWELv0::encrypt_bool(plain_b, params::tlwe_lv0::ALPHA, &key.key_lv0);
             let tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &cloud_key, &mut plan);
-            let dec = tlwe::tlweSymDecrypt(&tlwe_nand, &key.key_lv0);
+            let dec = tlwe_nand.decrypt_bool(&key.key_lv0);
             dbg!(plain_a);
             dbg!(plain_b);
             dbg!(nand);
@@ -509,23 +494,12 @@ mod tests {
         }
 
         let try_num = 100;
-        let plain_a = rng.gen::<u32>() % 2;
-        let mut mu_a = 0.125;
-        if plain_a == 0 {
-            mu_a = -0.125;
-        }
-        let plain_b = rng.gen::<u32>() % 2;
-        let mut mu_b = 0.125;
-        if plain_b == 0 {
-            mu_b = -0.125;
-        }
-        let mut nand = 0;
-        if (plain_a & plain_b) == 0 {
-            nand = 1;
-        }
+        let plain_a = rng.gen::<bool>();
+        let plain_b = rng.gen::<bool>();
+        let nand = !(plain_a & plain_b);
 
-        let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &key.key_lv0);
-        let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &key.key_lv0);
+        let tlwe_a = tlwe::TLWELv0::encrypt_bool(plain_a, params::tlwe_lv0::ALPHA, &key.key_lv0);
+        let tlwe_b = tlwe::TLWELv0::encrypt_bool(plain_b, params::tlwe_lv0::ALPHA, &key.key_lv0);
         let mut tlwe_nand = tlwe::TLWELv0::new();
         println!("Started bechmark");
         let start = Instant::now();
@@ -535,7 +509,7 @@ mod tests {
         let end = start.elapsed();
         let exec_ms_per_gate = end.as_millis() as f64 / try_num as f64;
         println!("exec ms per gate : {} ms", exec_ms_per_gate);
-        let dec = tlwe::tlweSymDecrypt(&tlwe_nand, &key.key_lv0);
+        let dec = tlwe_nand.decrypt_bool(&key.key_lv0);
         dbg!(plain_a);
         dbg!(plain_b);
         dbg!(nand);

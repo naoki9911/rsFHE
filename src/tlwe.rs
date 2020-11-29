@@ -1,6 +1,5 @@
 use crate::key;
 use crate::params;
-use crate::trlwe;
 use crate::utils;
 use rand::Rng;
 use std::iter::Iterator;
@@ -25,6 +24,43 @@ impl TLWELv0 {
 
     pub fn b_mut(&mut self) -> &mut u32 {
         return &mut self.p[params::tlwe_lv0::N];
+    }
+
+    pub fn encrypt_f64(p: f64, alpha: f64, key: &key::SecretKeyLv0) -> TLWELv0 {
+        let mut rng = rand::thread_rng();
+        let mut tlwe = TLWELv0::new();
+        let mut inner_product: u32 = 0;
+
+        for i in 0..key.len() {
+            let rand_u32: u32 = rng.gen();
+            inner_product = inner_product.wrapping_add(key[i] * rand_u32);
+            tlwe.p[i] = rand_u32;
+        }
+
+        let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
+        let mut rng = rand::thread_rng();
+        let b = utils::gussian_f64(p, &normal_distr, &mut rng);
+        *tlwe.b_mut() = inner_product.wrapping_add(b);
+        return tlwe;
+    }
+
+    pub fn encrypt_bool(p_bool: bool, alpha: f64, key: &key::SecretKeyLv0) -> TLWELv0 {
+        let p = if p_bool { 0.125 } else { -0.125 };
+        return Self::encrypt_f64(p, alpha, key);
+    }
+
+    pub fn decrypt_bool(&self, key: &key::SecretKeyLv0) -> bool {
+        let mut inner_product: u32 = 0;
+        for i in 0..key.len() {
+            inner_product = inner_product.wrapping_add(self.p[i] * key[i]);
+        }
+
+        let res_torus = (self.p[params::tlwe_lv0::N].wrapping_sub(inner_product)) as i32;
+        if res_torus < 0 {
+            return false;
+        } else {
+            return true;
+        }
     }
 }
 
@@ -64,75 +100,47 @@ impl TLWELv1 {
         };
     }
 
-    pub fn b(&self) -> u32 {
-        return self.p[params::tlwe_lv1::N];
-    }
-
     pub fn b_mut(&mut self) -> &mut u32 {
         return &mut self.p[params::tlwe_lv1::N];
     }
-}
 
-pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &key::SecretKeyLv0) -> TLWELv0 {
-    let mut rng = rand::thread_rng();
-    let mut tlwe = TLWELv0::new();
-    let mut inner_product: u32 = 0;
-
-    for i in 0..key.len() {
-        let rand_u32: u32 = rng.gen();
-        inner_product = inner_product.wrapping_add(key[i] * rand_u32);
-        tlwe.p[i] = rand_u32;
+    #[cfg(test)]
+    pub fn encrypt_f64(p: f64, alpha: f64, key: &key::SecretKeyLv1) -> TLWELv1 {
+        let mut rng = rand::thread_rng();
+        let mut tlwe = TLWELv1::new();
+        let mut inner_product: u32 = 0;
+        for i in 0..key.len() {
+            let rand_u32: u32 = rng.gen();
+            inner_product = inner_product.wrapping_add(key[i] * rand_u32);
+            tlwe.p[i] = rand_u32;
+        }
+        let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
+        let mut rng = rand::thread_rng();
+        let b = utils::gussian_f64(p, &normal_distr, &mut rng);
+        *tlwe.b_mut() = inner_product.wrapping_add(b);
+        return tlwe;
     }
 
-    let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
-    let mut rng = rand::thread_rng();
-    let b = utils::gussian_f64(p, &normal_distr, &mut rng);
-    *tlwe.b_mut() = inner_product.wrapping_add(b);
-    return tlwe;
-}
-
-pub fn tlweSymDecrypt(tlwe: &TLWELv0, key: &key::SecretKeyLv0) -> u32 {
-    let mut inner_product: u32 = 0;
-    for i in 0..key.len() {
-        inner_product = inner_product.wrapping_add(tlwe.p[i] * key[i]);
+    #[cfg(test)]
+    pub fn encrypt_bool(b: bool, alpha: f64, key: &key::SecretKeyLv1) -> TLWELv1 {
+        let p = if b { 0.125 } else { -0.125 };
+        return Self::encrypt_f64(p, alpha, key);
     }
 
-    let res_torus = (tlwe.p[params::tlwe_lv0::N].wrapping_sub(inner_product)) as i32;
-    if res_torus < 0 {
-        return 0;
-    } else {
-        return 1;
-    }
-}
+    #[cfg(test)]
+    pub fn decrypt_bool(&self, key: &key::SecretKeyLv1) -> bool {
+        let mut inner_product: u32 = 0;
+        for i in 0..key.len() {
+            inner_product = inner_product.wrapping_add(self.p[i] * key[i]);
+        }
 
-pub fn tlweLv1SymDecrypt(tlwe: &TLWELv1, key: &key::SecretKeyLv1) -> u32 {
-    let mut inner_product: u32 = 0;
-    for i in 0..key.len() {
-        inner_product = inner_product.wrapping_add(tlwe.p[i] * key[i]);
+        let res_torus = (self.p[key.len()].wrapping_sub(inner_product)) as i32;
+        if res_torus < 0 {
+            return false;
+        } else {
+            return true;
+        }
     }
-
-    let res_torus = (tlwe.p[key.len()].wrapping_sub(inner_product)) as i32;
-    if res_torus < 0 {
-        return 0;
-    } else {
-        return 1;
-    }
-}
-
-pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &key::SecretKeyLv1) -> TLWELv1 {
-    let mut rng = rand::thread_rng();
-    let mut tlwe = TLWELv1::new();
-    let mut inner_product: u32 = 0;
-    for i in 0..key.len() {
-        let rand_u32: u32 = rng.gen();
-        inner_product = inner_product.wrapping_add(key[i] * rand_u32);
-        tlwe.p[i] = rand_u32;
-    }
-    let normal_distr = rand_distr::Normal::new(0.0, alpha).unwrap();
-    let mut rng = rand::thread_rng();
-    let b = utils::gussian_f64(p, &normal_distr, &mut rng);
-    *tlwe.b_mut() = inner_product.wrapping_add(b);
-    return tlwe;
 }
 
 #[cfg(test)]
@@ -152,14 +160,10 @@ mod tests {
         let try_num = 10000;
 
         for _i in 0..try_num {
-            let sample: u8 = rng.gen::<u8>() % 2;
-            let mut mu = 0.125;
-            if sample == 0 {
-                mu = -0.125;
-            }
-            let secret = tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &key.key_lv0);
-            let plain = tlweSymDecrypt(&secret, &key.key_lv0) as u8;
-            let plain_dirty = tlweSymDecrypt(&secret, &key_dirty.key_lv0) as u8;
+            let sample = rng.gen::<bool>();
+            let secret = TLWELv0::encrypt_bool(sample, params::tlwe_lv0::ALPHA, &key.key_lv0);
+            let plain = secret.decrypt_bool(&key.key_lv0);
+            let plain_dirty = secret.decrypt_bool(&key_dirty.key_lv0);
             assert_eq!(plain, sample);
             if plain != plain_dirty {
                 correct += 1;

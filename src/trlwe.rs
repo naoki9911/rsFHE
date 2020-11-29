@@ -151,12 +151,12 @@ mod tests {
 
         for _i in 0..try_num {
             let mut plain_text_enc: Vec<f64> = Vec::new();
-            let mut plain_text: Vec<u32> = Vec::new();
+            let mut plain_text: Vec<bool> = Vec::new();
 
             for _j in 0..N {
-                let sample: u32 = rng.gen::<u32>() % 2;
+                let sample = rng.gen::<bool>();
                 let mut mu = 0.125;
-                if sample == 0 {
+                if sample == false {
                     mu = -0.125;
                 }
                 plain_text.push(sample);
@@ -172,8 +172,8 @@ mod tests {
 
             for j in 0..N {
                 let tlwe = trlwe::sample_extract_index(&c, j);
-                let dec = tlwe::tlweLv1SymDecrypt(&tlwe, &key.key_lv1);
-                let dec_dirty = tlwe::tlweLv1SymDecrypt(&tlwe, &key_dirty.key_lv1);
+                let dec = tlwe.decrypt_bool(&key.key_lv1);
+                let dec_dirty = tlwe.decrypt_bool(&key_dirty.key_lv1);
                 assert_eq!(plain_text[j], dec);
                 if plain_text[j] != dec_dirty {
                     correct += 1;
