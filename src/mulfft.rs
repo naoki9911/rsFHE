@@ -1,9 +1,9 @@
+use crate::spqlios;
 use fftw::array::AlignedVec;
 use fftw::plan::*;
 use fftw::types::*;
 use rand::Rng;
 use std::f64::consts::PI;
-use crate::spqlios;
 
 pub struct FFTPlan {
     pub forwardPlan: C2CPlan64,
@@ -14,13 +14,13 @@ pub struct FFTPlan {
 }
 
 impl FFTPlan {
-    pub fn new(N:usize) -> FFTPlan {
-        return FFTPlan{
-            forwardPlan: C2CPlan::aligned(&[N/2], Sign::Forward, Flag::MEASURE).unwrap(),
-            backwardPlan: C2CPlan::aligned(&[N/2], Sign::Backward, Flag::MEASURE).unwrap(),
-            twist:twist_gen(N),
-            spqlios : unsafe{spqlios::Spqlios_new(N as i32)},
-            n:N,
+    pub fn new(N: usize) -> FFTPlan {
+        return FFTPlan {
+            forwardPlan: C2CPlan::aligned(&[N / 2], Sign::Forward, Flag::MEASURE).unwrap(),
+            backwardPlan: C2CPlan::aligned(&[N / 2], Sign::Backward, Flag::MEASURE).unwrap(),
+            twist: twist_gen(N),
+            spqlios: unsafe { spqlios::Spqlios_new(N as i32) },
+            n: N,
         };
     }
 }
@@ -72,20 +72,20 @@ pub fn twist_ifft_1d(input: &mut AlignedVec<c64>, plan: &mut FFTPlan) -> Vec<f64
 
 pub fn spqlios_ifft_1d_1024(input: &[u32; 1024], plan: &mut FFTPlan) -> [f64; 1024] {
     let src_const_ptr = input.as_ptr() as *const _;
-    let mut res = Box::new([0.0f64;1024]);
+    let mut res = Box::new([0.0f64; 1024]);
     let res_mut_ptr = Box::into_raw(res) as *mut _;
 
-    unsafe{
+    unsafe {
         spqlios::Spqlios_ifft_lv1(plan.spqlios, res_mut_ptr, src_const_ptr);
     }
-    res = unsafe{Box::from_raw(res_mut_ptr as *mut [f64; 1024])};
+    res = unsafe { Box::from_raw(res_mut_ptr as *mut [f64; 1024]) };
     return *res;
 }
 
 pub fn spqlios_ifft_1d(input: &Vec<u32>, plan: &mut FFTPlan) -> Vec<f64> {
-    let mut res:Vec<f64> = vec![0.0f64; plan.n];
+    let mut res: Vec<f64> = vec![0.0f64; plan.n];
 
-    unsafe{
+    unsafe {
         spqlios::Spqlios_ifft_lv1(plan.spqlios, res.as_mut_ptr(), input.as_ptr());
     }
 
@@ -94,18 +94,18 @@ pub fn spqlios_ifft_1d(input: &Vec<u32>, plan: &mut FFTPlan) -> Vec<f64> {
 
 pub fn spqlios_fft_1d_1024(input: &[f64; 1024], plan: &mut FFTPlan) -> [u32; 1024] {
     let src_const_ptr = input.as_ptr() as *const _;
-    let mut res = Box::new([0u32;1024]);
+    let mut res = Box::new([0u32; 1024]);
     let res_mut_ptr = Box::into_raw(res) as *mut _;
 
     unsafe {
         spqlios::Spqlios_fft_lv1(plan.spqlios, res_mut_ptr, src_const_ptr);
     }
-    res = unsafe{Box::from_raw(res_mut_ptr as *mut [u32; 1024])};
+    res = unsafe { Box::from_raw(res_mut_ptr as *mut [u32; 1024]) };
     return *res;
 }
 
 pub fn spqlios_fft_1d(input: &Vec<f64>, plan: &mut FFTPlan) -> Vec<u32> {
-    let mut res:Vec<u32> = vec![0u32;plan.n];
+    let mut res: Vec<u32> = vec![0u32; plan.n];
 
     unsafe {
         spqlios::Spqlios_fft_lv1(plan.spqlios, res.as_mut_ptr(), input.as_ptr());
@@ -119,14 +119,14 @@ pub fn spqlios_poly_mul(a: &Vec<u32>, b: &Vec<u32>, plan: &mut FFTPlan) -> Vec<u
     let b_ifft = spqlios_ifft_1d(b, plan);
     let mut mul = vec![0.0f64; plan.n];
 
-    let Ns = plan.n/2;
+    let Ns = plan.n / 2;
     for i in 0..Ns {
         let aimbim = a_ifft[i + Ns] * b_ifft[i + Ns];
         let arebim = a_ifft[i] * b_ifft[i + Ns];
         mul[i] = a_ifft[i] * b_ifft[i] - aimbim;
         mul[i + Ns] = a_ifft[i + Ns] * b_ifft[i] + arebim;
     }
-    
+
     return spqlios_fft_1d(&mul, plan);
 }
 
@@ -141,7 +141,7 @@ pub fn spqlios_poly_mul_1024(a: &[u32; 1024], b: &[u32; 1024], plan: &mut FFTPla
         mul[i] = a_ifft[i] * b_ifft[i] - aimbim;
         mul[i + 512] = a_ifft[i + 512] * b_ifft[i] + arebim;
     }
-    
+
     return spqlios_fft_1d_1024(&mul, plan);
 }
 
@@ -170,7 +170,11 @@ pub fn polynomial_mul_u32(a: &Vec<u32>, b: &Vec<u32>, plan: &mut FFTPlan) -> Vec
     return polynomial_mul(&a_i32, &b_i32, plan);
 }
 
-pub fn polynomial_mul_u32_1024(a: &[u32; 1024], b: &[u32; 1024], plan: &mut FFTPlan) -> [u32; 1024] {
+pub fn polynomial_mul_u32_1024(
+    a: &[u32; 1024],
+    b: &[u32; 1024],
+    plan: &mut FFTPlan,
+) -> [u32; 1024] {
     let a_f64 = a.iter().map(|&e| (e as i32) as f64).collect();
     let b_f64 = b.iter().map(|&e| (e as i32) as f64).collect();
     let a_fft = twist_fft_1d(&a_f64, plan);
@@ -183,8 +187,8 @@ pub fn polynomial_mul_u32_1024(a: &[u32; 1024], b: &[u32; 1024], plan: &mut FFTP
     }
 
     let res_f64 = twist_ifft_1d(&mut mul, plan);
-    let mut res:[u32; 1024] = [0; 1024];
-    let dividor:i64 = 2i64.pow(32);
+    let mut res: [u32; 1024] = [0; 1024];
+    let dividor: i64 = 2i64.pow(32);
     for (rref, f64val) in res.iter_mut().zip(res_f64.iter()) {
         *rref = ((f64val.round()) as i64 % dividor) as u32;
     }
@@ -263,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn fft_poly_mul_128() { 
+    fn fft_poly_mul_128() {
         let n = 128;
         let mut rng = rand::thread_rng();
         let mut plan = FFTPlan::new(n);
@@ -305,7 +309,7 @@ mod tests {
     #[test]
     fn test_spqlios_fft_ifft() {
         let n = 128;
-        let mut a:Vec<u32> = Vec::with_capacity(n);
+        let mut a: Vec<u32> = Vec::with_capacity(n);
         let mut rng = rand::thread_rng();
         let mut plan = FFTPlan::new(n);
         for i in 0..n {
@@ -317,7 +321,7 @@ mod tests {
         let res = spqlios_fft_1d(&a_fft, &mut plan);
         for i in 0..n {
             let diff = a[i] as i32 - res[i] as i32;
-            assert!(diff < 2 && diff > -2); 
+            assert!(diff < 2 && diff > -2);
             println!("{} {} {}", a_fft[i], a[i], res[i]);
         }
     }
@@ -325,8 +329,8 @@ mod tests {
     #[test]
     fn test_spqlios_poly_mul() {
         let n = 16;
-        let mut a:Vec<u32> = Vec::with_capacity(n);
-        let mut b:Vec<u32> = Vec::with_capacity(n);
+        let mut a: Vec<u32> = Vec::with_capacity(n);
+        let mut b: Vec<u32> = Vec::with_capacity(n);
         let mut rng = rand::thread_rng();
         let mut plan = FFTPlan::new(n);
         for i in 0..n {
@@ -335,11 +339,15 @@ mod tests {
         }
 
         let spqlios_res = spqlios_poly_mul(&a, &b, &mut plan);
-        let fftw_res = polynomial_mul(&a.iter().map(|&e| e as i32).collect(), &b.iter().map(|&e| e as i32).collect(), &mut plan);
+        let fftw_res = polynomial_mul(
+            &a.iter().map(|&e| e as i32).collect(),
+            &b.iter().map(|&e| e as i32).collect(),
+            &mut plan,
+        );
         for i in 0..n {
             //let diff = fftw_res[i] as i32 - spqlios_res[i] as i32;
             println!("{} {}", fftw_res[i], spqlios_res[i]);
-            //assert!(diff < 2 && diff > -2); 
+            //assert!(diff < 2 && diff > -2);
         }
     }
 
@@ -356,7 +364,7 @@ mod tests {
         let res = spqlios_fft_1d_1024(&a_fft, &mut plan);
         for i in 0..1024 {
             let diff = a[i] as i32 - res[i] as i32;
-            assert!(diff < 2 && diff > -2); 
+            assert!(diff < 2 && diff > -2);
         }
     }
 
@@ -375,7 +383,7 @@ mod tests {
         let res = poly_mul(&a.to_vec(), &b.to_vec());
         for i in 0..1024 {
             let diff = res[i] as i32 - spqlios_res[i] as i32;
-            assert!(diff < 2 && diff > -2); 
+            assert!(diff < 2 && diff > -2);
         }
     }
 

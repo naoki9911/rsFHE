@@ -1,3 +1,4 @@
+use crate::key;
 use crate::mulfft;
 use crate::params;
 use crate::tlwe;
@@ -14,8 +15,8 @@ pub struct TRGSWLv1 {
 impl TRGSWLv1 {
     pub fn new() -> TRGSWLv1 {
         return TRGSWLv1 {
-            trlwe: [trlwe::TRLWELv1::new(); params::trgsw_lv1::L*2],
-        }
+            trlwe: [trlwe::TRLWELv1::new(); params::trgsw_lv1::L * 2],
+        };
     }
 }
 
@@ -34,7 +35,10 @@ pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, plan: &mut mulfft::FF
     }
 
     let mut trgsw = TRGSWLv1::new();
-    trgsw.trlwe.iter_mut().for_each(|e| *e = trlwe::trlweSymEncrypt(&plain_zero, alpha, key, plan));
+    trgsw
+        .trlwe
+        .iter_mut()
+        .for_each(|e| *e = trlwe::trlweSymEncrypt(&plain_zero, alpha, key, plan));
 
     for i in 0..L {
         trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
@@ -46,16 +50,16 @@ pub fn trgswSymEncrypt(p: u32, alpha: f64, key: &Vec<u32>, plan: &mut mulfft::FF
 pub fn external_product(
     trgsw: &TRGSWLv1,
     trlwe: &trlwe::TRLWELv1,
+    cloud_key: &key::CloudKey,
     plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
-    let dec_a = decomposition(&trlwe.a);
-    let dec_b = decomposition(&trlwe.b);
+    let dec_a = decomposition(&trlwe.a, cloud_key);
+    let dec_b = decomposition(&trlwe.b, cloud_key);
     let mut res = trlwe::TRLWELv1::new();
 
     const L: usize = params::trgsw_lv1::L;
     const N: usize = params::trgsw_lv1::N;
     for i in 0..L {
-        //let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].a, plan);
         let tmp = mulfft::polynomial_mul_u32_1024(&dec_a[i], &trgsw.trlwe[i].a, plan);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
@@ -80,15 +84,18 @@ pub fn external_product(
     return res;
 }
 
-pub fn decomposition(a: &[u32; params::trgsw_lv1::N]) -> [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L] {
-    let offset = gen_offset();
-
-    let mut a_tilda: Vec<u32> = Vec::new();
-    let mut res: [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L] = [[0; params::trgsw_lv1::N]; params::trgsw_lv1::L];
-
-    for i in 0..params::trgsw_lv1::N {
-        a_tilda.push(a[i as usize].wrapping_add(offset));
-    }
+pub fn decomposition(
+    a: &[u32; params::trgsw_lv1::N],
+    cloud_key: &key::CloudKey,
+) -> [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L] {
+    let mut res: [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L] =
+        [[0; params::trgsw_lv1::N]; params::trgsw_lv1::L];
+    let mut a_tilda = [0u32; params::trgsw_lv1::N];
+    let offset = cloud_key.decomposition_offset;
+    a_tilda
+        .iter_mut()
+        .zip(a.iter())
+        .for_each(|(at_ref, a_val)| *at_ref = a_val.wrapping_add(offset));
 
     for i in 1..(params::trgsw_lv1::L + 1) as u32 {
         for j in 0..params::trgsw_lv1::N {
@@ -107,6 +114,7 @@ pub fn cmux(
     in1: &trlwe::TRLWELv1,
     in2: &trlwe::TRLWELv1,
     cond: &TRGSWLv1,
+    cloud_key: &key::CloudKey,
     plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
     let mut tmp = trlwe::TRLWELv1::new();
@@ -116,7 +124,7 @@ pub fn cmux(
         tmp.b[i] = in2.b[i].wrapping_sub(in1.b[i]);
     }
 
-    let tmp2 = external_product(cond, &tmp, plan);
+    let tmp2 = external_product(cond, &tmp, cloud_key, plan);
     let mut res = trlwe::TRLWELv1::new();
     for i in 0..N {
         res.a[i] = tmp2.a[i].wrapping_add(in1.a[i]);
@@ -126,22 +134,11 @@ pub fn cmux(
     return res;
 }
 
-pub fn gen_offset() -> u32 {
-    let mut offset: u32 = 0;
-
-    for i in 0..(params::trgsw_lv1::L as u32) {
-        offset = offset.wrapping_add(
-            params::trgsw_lv1::BG / 2 * (1 << (32 - (i + 1) * params::trgsw_lv1::BGBIT)),
-        );
-    }
-
-    return offset;
-}
-
 pub fn blind_rotate(
     src: &tlwe::TLWELv0,
     testvec: &trlwe::TRLWELv1,
     bkey: &Vec<TRGSWLv1>,
+    cloud_key: &key::CloudKey,
     plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
     const N: usize = params::trgsw_lv1::N;
@@ -159,16 +156,16 @@ pub fn blind_rotate(
             a: poly_mul_with_X_k(&res.a, a_tilda),
             b: poly_mul_with_X_k(&res.b, a_tilda),
         };
-        res = cmux(&res, &res2, &bkey[i as usize], plan);
+        res = cmux(&res, &res2, &bkey[i as usize], cloud_key, plan);
     }
 
     return res;
 }
 
 pub fn poly_mul_with_X_k(a: &[u32; params::trgsw_lv1::N], k: usize) -> [u32; params::trgsw_lv1::N] {
-    const N:usize = params::trgsw_lv1::N;
+    const N: usize = params::trgsw_lv1::N;
 
-    let mut res:[u32; params::trgsw_lv1::N] = [0; params::trgsw_lv1::N];
+    let mut res: [u32; params::trgsw_lv1::N] = [0; params::trgsw_lv1::N];
 
     if k < N {
         for i in 0..(N - k) {
@@ -233,12 +230,12 @@ pub fn identity_key_switching(
 pub fn generate_ksk(sKeyLv0: &Vec<u32>, sKeyLv1: &Vec<u32>) -> Vec<Vec<Vec<tlwe::TLWELv0>>> {
     const BASEBIT: usize = params::trgsw_lv1::BASEBIT;
     const IKS_T: usize = params::trgsw_lv1::IKS_T;
-    let mut res: Vec<Vec<Vec<tlwe::TLWELv0>>> = Vec::new();
+    let mut res: Vec<Vec<Vec<tlwe::TLWELv0>>> = Vec::with_capacity(params::trgsw_lv1::N);
 
     for i in 0..params::trgsw_lv1::N {
-        let mut ksk_i: Vec<Vec<tlwe::TLWELv0>> = Vec::new();
+        let mut ksk_i: Vec<Vec<tlwe::TLWELv0>> = Vec::with_capacity(IKS_T);
         for j in 0..IKS_T {
-            let mut ksk_ij: Vec<tlwe::TLWELv0> = Vec::new();
+            let mut ksk_ij: Vec<tlwe::TLWELv0> = Vec::with_capacity(1 << BASEBIT);
             for k in 0..(1 << BASEBIT) {
                 if k == 0 {
                     ksk_ij.push(tlwe::TLWELv0::new());
@@ -261,12 +258,13 @@ pub fn hom_nand(
     ksk: &Vec<Vec<Vec<tlwe::TLWELv0>>>,
     b_key: &Vec<TRGSWLv1>,
     test_vec: &trlwe::TRLWELv1,
-    plan :&mut mulfft::FFTPlan,
+    cloud_key: &key::CloudKey,
+    plan: &mut mulfft::FFTPlan,
 ) -> tlwe::TLWELv0 {
     let mut tlwe_nand = -(tlwe_a + tlwe_b);
     *tlwe_nand.b_mut() = tlwe_nand.b() + utils::f64_to_torus(0.125);
 
-    let trlwe = blind_rotate(&tlwe_nand, test_vec, b_key, plan);
+    let trlwe = blind_rotate(&tlwe_nand, test_vec, b_key, cloud_key, plan);
     let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
     let tlwe_bootstrapped = identity_key_switching(&tlwe_lv1, ksk);
     return tlwe_bootstrapped;
@@ -288,6 +286,7 @@ mod tests {
     fn test_decomposition() {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
+        let cloud_key = key::CloudKey::new();
 
         // Generate 1024bits secret key
         let mut key: Vec<u32> = Vec::new();
@@ -318,9 +317,10 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
-            let c_decomp_1 = decomposition(&c.a);
-            let c_decomp_2 = decomposition(&c.b);
+            let c =
+                trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
+            let c_decomp_1 = decomposition(&c.a, &cloud_key);
+            let c_decomp_2 = decomposition(&c.b, &cloud_key);
             let h_u32 = utils::f64_to_torus_vec(&h);
             let mut res = trlwe::TRLWELv1::new();
             for j in 0..N {
@@ -346,6 +346,7 @@ mod tests {
     fn test_external_product() {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
+        let cloud_key = key::CloudKey::new();
 
         // Generate 1024bits secret key
         let mut key: Vec<u32> = Vec::new();
@@ -370,10 +371,11 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
+            let c =
+                trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
             let p = trlwe::trlweSymDecrypt(&c, &key, &mut plan);
             let trgsw_true = trgswSymEncrypt(1, params::trgsw_lv1::ALPHA, &key, &mut plan);
-            let ext_c = external_product(&trgsw_true, &c, &mut plan);
+            let ext_c = external_product(&trgsw_true, &c, &cloud_key, &mut plan);
             let dec = trlwe::trlweSymDecrypt(&ext_c, &key, &mut plan);
 
             for j in 0..N {
@@ -390,6 +392,7 @@ mod tests {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
         let mut key: Vec<u32> = Vec::new();
+        let cloud_key = key::CloudKey::new();
         for i in 0..N {
             key.push((rng.gen::<u8>() % 2) as u32);
         }
@@ -425,8 +428,8 @@ mod tests {
             let c2 = trlwe::trlweSymEncrypt(&plain_text_enc_2, ALPHA, &key, &mut plan);
             let trgsw_true = trgswSymEncrypt(1, ALPHA, &key, &mut plan);
             let trgsw_false = trgswSymEncrypt(0, ALPHA, &key, &mut plan);
-            let enc_1 = cmux(&c1, &c2, &trgsw_false, &mut plan);
-            let enc_2 = cmux(&c1, &c2, &trgsw_true, &mut plan);
+            let enc_1 = cmux(&c1, &c2, &trgsw_false, &cloud_key, &mut plan);
+            let enc_2 = cmux(&c1, &c2, &trgsw_true, &cloud_key, &mut plan);
             let dec_1 = trlwe::trlweSymDecrypt(&enc_1, &key, &mut plan);
             let dec_2 = trlwe::trlweSymDecrypt(&enc_2, &key, &mut plan);
             for j in 0..N {
@@ -441,6 +444,7 @@ mod tests {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
         let mut plan = mulfft::FFTPlan::new(N);
+        let cloud_key = key::CloudKey::new();
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
         for i in 0..params::tlwe_lv0::N {
@@ -470,7 +474,7 @@ mod tests {
             }
 
             let tlwe = tlwe::tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &keyLv0);
-            let trlwe = blind_rotate(&tlwe, &test_vec, &bKey, &mut plan);
+            let trlwe = blind_rotate(&tlwe, &test_vec, &bKey, &cloud_key, &mut plan);
             let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
             let dec = tlwe::tlweLv1SymDecrypt(&tlwe_lv1, &keyLv1);
             assert_eq!(plain_text, dec);
@@ -513,6 +517,7 @@ mod tests {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
         let mut plan = mulfft::FFTPlan::new(N);
+        let cloud_key = key::CloudKey::new();
         let mut keyLv0: Vec<u32> = Vec::new();
         let mut keyLv1: Vec<u32> = Vec::new();
         for i in 0..params::tlwe_lv0::N {
@@ -553,7 +558,9 @@ mod tests {
 
             let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &keyLv0);
             let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &keyLv0);
-            let tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &mut plan);
+            let tlwe_nand = hom_nand(
+                &tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &cloud_key, &mut plan,
+            );
             let dec = tlwe::tlweSymDecrypt(&tlwe_nand, &keyLv0);
             dbg!(plain_a);
             dbg!(plain_b);
@@ -567,9 +574,10 @@ mod tests {
     fn test_hom_nand_bench() {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
+        let cloud_key = key::CloudKey::new();
         let mut plan = mulfft::FFTPlan::new(N);
-        let mut keyLv0: Vec<u32> = Vec::new();
-        let mut keyLv1: Vec<u32> = Vec::new();
+        let mut keyLv0: Vec<u32> = Vec::with_capacity(params::tlwe_lv0::N);
+        let mut keyLv1: Vec<u32> = Vec::with_capacity(params::tlwe_lv1::N);
         for i in 0..params::tlwe_lv0::N {
             keyLv0.push((rng.gen::<u8>() % 2) as u32);
         }
@@ -611,7 +619,9 @@ mod tests {
         println!("Started bechmark");
         let start = Instant::now();
         for i in 0..try_num {
-            tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &mut plan);
+            tlwe_nand = hom_nand(
+                &tlwe_a, &tlwe_b, &ksk, &b_key, &test_vec, &cloud_key, &mut plan,
+            );
         }
         let end = start.elapsed();
         let exec_ms_per_gate = end.as_millis() as f64 / try_num as f64;

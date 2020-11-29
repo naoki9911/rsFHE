@@ -117,7 +117,8 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
+            let c =
+                trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
             let dec = trlwe::trlweSymDecrypt(&c, &key, &mut plan);
             let dec_dirty = trlwe::trlweSymDecrypt(&c, &key_dirty, &mut plan);
 
@@ -164,7 +165,8 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
+            let c =
+                trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
 
             for j in 0..N {
                 let tlwe = trlwe::sample_extract_index(&c, j);
