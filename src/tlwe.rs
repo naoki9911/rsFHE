@@ -6,6 +6,7 @@ use std::iter::Iterator;
 use std::ops::Add;
 use std::ops::Neg;
 
+#[derive(Debug, Copy, Clone)]
 pub struct TLWELv0 {
     pub p: [u32; params::tlwe_lv0::N + 1],
 }
