@@ -5,6 +5,7 @@ use crate::tlwe;
 use crate::trlwe;
 use crate::utils;
 
+#[derive(Debug, Copy, Clone)]
 pub struct TRGSWLv1 {
     trlwe: [trlwe::TRLWELv1; params::trgsw_lv1::L * 2],
 }
@@ -137,7 +138,6 @@ pub fn cmux(
 
 pub fn blind_rotate(
     src: &tlwe::TLWELv0,
-    bkey: &Vec<TRGSWLv1>,
     cloud_key: &key::CloudKey,
     plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
@@ -156,7 +156,13 @@ pub fn blind_rotate(
             a: poly_mul_with_X_k(&res.a, a_tilda),
             b: poly_mul_with_X_k(&res.b, a_tilda),
         };
-        res = cmux(&res, &res2, &bkey[i as usize], cloud_key, plan);
+        res = cmux(
+            &res,
+            &res2,
+            &cloud_key.bootstrapping_key[i as usize],
+            cloud_key,
+            plan,
+        );
     }
 
     return res;
@@ -219,14 +225,13 @@ pub fn identity_key_switching(
 pub fn hom_nand(
     tlwe_a: &tlwe::TLWELv0,
     tlwe_b: &tlwe::TLWELv0,
-    b_key: &Vec<TRGSWLv1>,
     cloud_key: &key::CloudKey,
     plan: &mut mulfft::FFTPlan,
 ) -> tlwe::TLWELv0 {
     let mut tlwe_nand = -(tlwe_a + tlwe_b);
     *tlwe_nand.b_mut() = tlwe_nand.b() + utils::f64_to_torus(0.125);
 
-    let trlwe = blind_rotate(&tlwe_nand, b_key, cloud_key, plan);
+    let trlwe = blind_rotate(&tlwe_nand, cloud_key, plan);
     let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
     let tlwe_bootstrapped = identity_key_switching(&tlwe_lv1, &cloud_key.key_switching_key);
     return tlwe_bootstrapped;
@@ -407,17 +412,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut plan = mulfft::FFTPlan::new(N);
         let key = key::SecretKey::new();
-        let cloud_key = key::CloudKey::new(&key);
-
-        let mut bKey: Vec<TRGSWLv1> = Vec::new();
-        for i in 0..key.key_lv0.len() {
-            bKey.push(trgswSymEncrypt(
-                key.key_lv0[i],
-                params::trgsw_lv1::ALPHA,
-                &key.key_lv1,
-                &mut plan,
-            ));
-        }
+        let cloud_key = key::CloudKey::new(&key, &mut plan);
 
         let try_num = 10;
         for i in 0..try_num {
@@ -428,7 +423,7 @@ mod tests {
             }
 
             let tlwe = tlwe::tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &key.key_lv0);
-            let trlwe = blind_rotate(&tlwe, &bKey, &cloud_key, &mut plan);
+            let trlwe = blind_rotate(&tlwe, &cloud_key, &mut plan);
             let tlwe_lv1 = trlwe::sample_extract_index(&trlwe, 0);
             let dec = tlwe::tlweLv1SymDecrypt(&tlwe_lv1, &key.key_lv1);
             assert_eq!(plain_text, dec);
@@ -440,7 +435,8 @@ mod tests {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
         let key = key::SecretKey::new();
-        let cloud_key = key::CloudKey::new(&key);
+        let mut plan = mulfft::FFTPlan::new(N);
+        let cloud_key = key::CloudKey::new(&key, &mut plan);
 
         let try_num = 100;
         for i in 0..try_num {
@@ -463,17 +459,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut plan = mulfft::FFTPlan::new(N);
         let key = key::SecretKey::new();
-        let cloud_key = key::CloudKey::new(&key);
-
-        let mut b_key: Vec<TRGSWLv1> = Vec::new();
-        for i in 0..key.key_lv0.len() {
-            b_key.push(trgswSymEncrypt(
-                key.key_lv0[i],
-                params::trgsw_lv1::ALPHA,
-                &key.key_lv1,
-                &mut plan,
-            ));
-        }
+        let cloud_key = key::CloudKey::new(&key, &mut plan);
 
         let try_num = 100;
         for i in 0..try_num {
@@ -494,7 +480,7 @@ mod tests {
 
             let tlwe_a = tlwe::tlweSymEncrypt(mu_a, params::tlwe_lv0::ALPHA, &key.key_lv0);
             let tlwe_b = tlwe::tlweSymEncrypt(mu_b, params::tlwe_lv0::ALPHA, &key.key_lv0);
-            let tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &b_key, &cloud_key, &mut plan);
+            let tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &cloud_key, &mut plan);
             let dec = tlwe::tlweSymDecrypt(&tlwe_nand, &key.key_lv0);
             dbg!(plain_a);
             dbg!(plain_b);
@@ -510,7 +496,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut plan = mulfft::FFTPlan::new(N);
         let key = key::SecretKey::new();
-        let cloud_key = key::CloudKey::new(&key);
+        let cloud_key = key::CloudKey::new(&key, &mut plan);
 
         let mut b_key: Vec<TRGSWLv1> = Vec::new();
         for i in 0..key.key_lv0.len() {
@@ -544,7 +530,7 @@ mod tests {
         println!("Started bechmark");
         let start = Instant::now();
         for i in 0..try_num {
-            tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &b_key, &cloud_key, &mut plan);
+            tlwe_nand = hom_nand(&tlwe_a, &tlwe_b, &cloud_key, &mut plan);
         }
         let end = start.elapsed();
         let exec_ms_per_gate = end.as_millis() as f64 / try_num as f64;

@@ -1,5 +1,7 @@
+use crate::mulfft;
 use crate::params;
 use crate::tlwe;
+use crate::trgsw;
 use crate::trlwe;
 use crate::utils;
 use rand::Rng;
@@ -11,6 +13,7 @@ const TRGSWLV1_BASE: usize = 1 << params::trgsw_lv1::BASEBIT;
 pub type SecretKeyLv0 = [u32; params::tlwe_lv0::N];
 pub type SecretKeyLv1 = [u32; params::tlwe_lv1::N];
 pub type KeySwitchingKey = Vec<tlwe::TLWELv0>;
+pub type BootstrappingKey = Vec<trgsw::TRGSWLv1>;
 
 pub struct SecretKey {
     pub key_lv0: SecretKeyLv0,
@@ -38,17 +41,20 @@ pub struct CloudKey {
     pub decomposition_offset: u32,
     pub blind_rotate_testvec: trlwe::TRLWELv1,
     pub key_switching_key: KeySwitchingKey,
+    pub bootstrapping_key: BootstrappingKey,
 }
 
 impl CloudKey {
-    pub fn new(secret_key: &SecretKey) -> Self {
+    pub fn new(secret_key: &SecretKey, plan: &mut mulfft::FFTPlan) -> Self {
         return CloudKey {
             decomposition_offset: gen_decomposition_offset(),
             blind_rotate_testvec: gen_testvec(),
             key_switching_key: gen_key_switching_key(secret_key),
+            bootstrapping_key: gen_bootstrapping_key(secret_key, plan),
         };
     }
 
+    #[cfg(test)]
     pub fn new_no_ksk() -> Self {
         return CloudKey {
             decomposition_offset: gen_decomposition_offset(),
@@ -57,6 +63,7 @@ impl CloudKey {
                 tlwe::TLWELv0::new();
                 TRGSWLV1_BASE * TRGSWLV1_IKS_T * TRGSWLV1_N
             ],
+            bootstrapping_key: vec![trgsw::TRGSWLv1::new(); params::tlwe_lv0::N],
         };
     }
 }
@@ -103,5 +110,19 @@ pub fn gen_key_switching_key(secret_key: &SecretKey) -> KeySwitchingKey {
         }
     }
 
+    return res;
+}
+
+pub fn gen_bootstrapping_key(
+    secret_key: &SecretKey,
+    plan: &mut mulfft::FFTPlan,
+) -> BootstrappingKey {
+    let mut res = vec![trgsw::TRGSWLv1::new(); params::tlwe_lv0::N];
+    res.iter_mut()
+        .zip(secret_key.key_lv0.iter())
+        .for_each(|(rref, &kval)| {
+            *rref =
+                trgsw::trgswSymEncrypt(kval, params::trgsw_lv1::ALPHA, &secret_key.key_lv1, plan)
+        });
     return res;
 }
