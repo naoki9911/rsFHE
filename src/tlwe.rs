@@ -1,3 +1,4 @@
+use crate::key;
 use crate::params;
 use crate::trlwe;
 use crate::utils;
@@ -32,8 +33,8 @@ impl Add for &TLWELv0 {
 
     fn add(self, other: &TLWELv0) -> TLWELv0 {
         let mut res = TLWELv0::new();
-        for ((rref, sval), oval) in res.p.iter_mut().zip(self.p.iter()).zip(other.p.iter()) {
-            *rref = sval + oval;
+        for ((rref, &sval), &oval) in res.p.iter_mut().zip(self.p.iter()).zip(other.p.iter()) {
+            *rref = sval.wrapping_add(oval);
         }
         return res;
     }
@@ -72,7 +73,7 @@ impl TLWELv1 {
     }
 }
 
-pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv0 {
+pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &key::SecretKeyLv0) -> TLWELv0 {
     let mut rng = rand::thread_rng();
     let mut tlwe = TLWELv0::new();
     let mut inner_product: u32 = 0;
@@ -90,7 +91,7 @@ pub fn tlweSymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv0 {
     return tlwe;
 }
 
-pub fn tlweSymDecrypt(tlwe: &TLWELv0, key: &Vec<u32>) -> u32 {
+pub fn tlweSymDecrypt(tlwe: &TLWELv0, key: &key::SecretKeyLv0) -> u32 {
     let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         inner_product = inner_product.wrapping_add(tlwe.p[i] * key[i]);
@@ -104,7 +105,7 @@ pub fn tlweSymDecrypt(tlwe: &TLWELv0, key: &Vec<u32>) -> u32 {
     }
 }
 
-pub fn tlweLv1SymDecrypt(tlwe: &TLWELv1, key: &Vec<u32>) -> u32 {
+pub fn tlweLv1SymDecrypt(tlwe: &TLWELv1, key: &key::SecretKeyLv1) -> u32 {
     let mut inner_product: u32 = 0;
     for i in 0..key.len() {
         inner_product = inner_product.wrapping_add(tlwe.p[i] * key[i]);
@@ -118,7 +119,7 @@ pub fn tlweLv1SymDecrypt(tlwe: &TLWELv1, key: &Vec<u32>) -> u32 {
     }
 }
 
-pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv1 {
+pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &key::SecretKeyLv1) -> TLWELv1 {
     let mut rng = rand::thread_rng();
     let mut tlwe = TLWELv1::new();
     let mut inner_product: u32 = 0;
@@ -136,6 +137,7 @@ pub fn tlweLv1SymEncrypt(p: f64, alpha: f64, key: &Vec<u32>) -> TLWELv1 {
 
 #[cfg(test)]
 mod tests {
+    use crate::key;
     use crate::params;
     use crate::tlwe::*;
 
@@ -143,13 +145,8 @@ mod tests {
     fn test_tlwe_enc_and_dec() {
         let mut rng = rand::thread_rng();
 
-        // Generate 500bits secret key
-        let mut key: Vec<u32> = Vec::new();
-        let mut key_dirty: Vec<u32> = Vec::new();
-        for i in 0..params::tlwe_lv0::N {
-            key.push((rng.gen::<u8>() % 2) as u32);
-            key_dirty.push((rng.gen::<u8>() % 2) as u32);
-        }
+        let key = key::SecretKey::new();
+        let key_dirty = key::SecretKey::new();
 
         let mut correct = 0;
         let try_num = 10000;
@@ -160,9 +157,9 @@ mod tests {
             if sample == 0 {
                 mu = -0.125;
             }
-            let secret = tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &key);
-            let plain = tlweSymDecrypt(&secret, &key) as u8;
-            let plain_dirty = tlweSymDecrypt(&secret, &key_dirty) as u8;
+            let secret = tlweSymEncrypt(mu, params::tlwe_lv0::ALPHA, &key.key_lv0);
+            let plain = tlweSymDecrypt(&secret, &key.key_lv0) as u8;
+            let plain_dirty = tlweSymDecrypt(&secret, &key_dirty.key_lv0) as u8;
             assert_eq!(plain, sample);
             if plain != plain_dirty {
                 correct += 1;

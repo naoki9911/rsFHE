@@ -1,3 +1,4 @@
+use crate::key;
 use crate::mulfft;
 use crate::params;
 use crate::tlwe;
@@ -23,7 +24,7 @@ impl TRLWELv1 {
 pub fn trlweSymEncrypt(
     p: &Vec<f64>,
     alpha: f64,
-    key: &Vec<u32>,
+    key: &key::SecretKeyLv1,
     plan: &mut mulfft::FFTPlan,
 ) -> TRLWELv1 {
     let mut rng = rand::thread_rng();
@@ -35,9 +36,7 @@ pub fn trlweSymEncrypt(
     trlwe.b = utils::gussian_f64_vec(p, &normal_distr, &mut rng)
         .try_into()
         .unwrap();
-    let a_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
-    let key_i32 = key.iter().map(|&e| e as i32).collect();
-    let poly_res = mulfft::polynomial_mul(&a_i32, &key_i32, plan);
+    let poly_res = mulfft::spqlios_poly_mul_1024(&trlwe.a, key, plan);
 
     for (bref, rval) in trlwe.b.iter_mut().zip(poly_res.iter()) {
         *bref = bref.wrapping_add(*rval);
@@ -46,10 +45,12 @@ pub fn trlweSymEncrypt(
     return trlwe;
 }
 
-pub fn trlweSymDecrypt(trlwe: &TRLWELv1, key: &Vec<u32>, plan: &mut mulfft::FFTPlan) -> Vec<u32> {
-    let c_0_i32 = trlwe.a.iter().map(|&e| e as i32).collect();
-    let key_i32 = key.iter().map(|&e| e as i32).collect();
-    let poly_res = mulfft::polynomial_mul(&c_0_i32, &key_i32, plan);
+pub fn trlweSymDecrypt(
+    trlwe: &TRLWELv1,
+    key: &key::SecretKeyLv1,
+    plan: &mut mulfft::FFTPlan,
+) -> Vec<u32> {
+    let poly_res = mulfft::spqlios_poly_mul_1024(&trlwe.a, key, plan);
     let mut res: Vec<u32> = Vec::new();
     for i in 0..trlwe.a.len() {
         let value = (trlwe.b[i].wrapping_sub(poly_res[i])) as i32;
@@ -80,6 +81,7 @@ pub fn sample_extract_index(trlwe: &TRLWELv1, k: usize) -> tlwe::TLWELv1 {
 
 #[cfg(test)]
 mod tests {
+    use crate::key;
     use crate::mulfft;
     use crate::params;
     use crate::tlwe;
@@ -91,13 +93,9 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         // Generate 1024bits secret key
-        let mut key: Vec<u32> = Vec::new();
-        let mut key_dirty: Vec<u32> = Vec::new();
         const N: usize = params::trlwe_lv1::N;
-        for i in 0..N {
-            key.push((rng.gen::<u8>() % 2) as u32);
-            key_dirty.push((rng.gen::<u8>() % 2) as u32);
-        }
+        let key = key::SecretKey::new();
+        let key_dirty = key::SecretKey::new();
 
         let mut plan = mulfft::FFTPlan::new(N);
         let mut correct = 0;
@@ -117,10 +115,14 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c =
-                trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
-            let dec = trlwe::trlweSymDecrypt(&c, &key, &mut plan);
-            let dec_dirty = trlwe::trlweSymDecrypt(&c, &key_dirty, &mut plan);
+            let c = trlwe::trlweSymEncrypt(
+                &plain_text_enc,
+                params::trlwe_lv1::ALPHA,
+                &key.key_lv1,
+                &mut plan,
+            );
+            let dec = trlwe::trlweSymDecrypt(&c, &key.key_lv1, &mut plan);
+            let dec_dirty = trlwe::trlweSymDecrypt(&c, &key_dirty.key_lv1, &mut plan);
 
             for j in 0..N {
                 assert_eq!(plain_text[j], dec[j]);
@@ -139,13 +141,9 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         // Generate 1024bits secret key
-        let mut key: Vec<u32> = Vec::new();
-        let mut key_dirty: Vec<u32> = Vec::new();
         const N: usize = params::trlwe_lv1::N;
-        for i in 0..N {
-            key.push((rng.gen::<u8>() % 2) as u32);
-            key_dirty.push((rng.gen::<u8>() % 2) as u32);
-        }
+        let key = key::SecretKey::new();
+        let key_dirty = key::SecretKey::new();
 
         let mut plan = mulfft::FFTPlan::new(N);
         let mut correct = 0;
@@ -165,13 +163,17 @@ mod tests {
                 plain_text_enc.push(mu);
             }
 
-            let c =
-                trlwe::trlweSymEncrypt(&plain_text_enc, params::trlwe_lv1::ALPHA, &key, &mut plan);
+            let c = trlwe::trlweSymEncrypt(
+                &plain_text_enc,
+                params::trlwe_lv1::ALPHA,
+                &key.key_lv1,
+                &mut plan,
+            );
 
             for j in 0..N {
                 let tlwe = trlwe::sample_extract_index(&c, j);
-                let dec = tlwe::tlweLv1SymDecrypt(&tlwe, &key);
-                let dec_dirty = tlwe::tlweLv1SymDecrypt(&tlwe, &key_dirty);
+                let dec = tlwe::tlweLv1SymDecrypt(&tlwe, &key.key_lv1);
+                let dec_dirty = tlwe::tlweLv1SymDecrypt(&tlwe, &key_dirty.key_lv1);
                 assert_eq!(plain_text[j], dec);
                 if plain_text[j] != dec_dirty {
                     correct += 1;
