@@ -1,9 +1,7 @@
-use crate::params;
-
 pub type Torus = u32;
 
-pub const KSK_ALPHA: f64 = params::tlwe_lv1::ALPHA;
-pub const BSK_ALPHA: f64 = 2.98023223876953125e-08;
+pub const KSK_ALPHA: f64 = tlwe_lv0::ALPHA;
+pub const BSK_ALPHA: f64 = tlwe_lv1::ALPHA;
 
 pub mod tlwe_lv0 {
 

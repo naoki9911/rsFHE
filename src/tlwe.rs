@@ -151,7 +151,7 @@ mod tests {
         let mut correct = 0;
         let try_num = 10000;
 
-        for i in 0..try_num {
+        for _i in 0..try_num {
             let sample: u8 = rng.gen::<u8>() % 2;
             let mut mu = 0.125;
             if sample == 0 {
