@@ -16,6 +16,8 @@ pub mod trlwe_lv1 {
     use crate::params;
 
     pub const N: usize = params::tlwe_lv1::N;
+
+    #[cfg(test)]
     pub const ALPHA: f64 = params::tlwe_lv1::ALPHA;
 }
 

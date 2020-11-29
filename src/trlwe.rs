@@ -101,11 +101,11 @@ mod tests {
         let mut correct = 0;
         let try_num = 500;
 
-        for i in 0..try_num {
+        for _i in 0..try_num {
             let mut plain_text_enc: Vec<f64> = Vec::new();
             let mut plain_text: Vec<u32> = Vec::new();
 
-            for j in 0..N {
+            for _j in 0..N {
                 let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {
@@ -149,11 +149,11 @@ mod tests {
         let mut correct = 0;
         let try_num = 10;
 
-        for i in 0..try_num {
+        for _i in 0..try_num {
             let mut plain_text_enc: Vec<f64> = Vec::new();
             let mut plain_text: Vec<u32> = Vec::new();
 
-            for j in 0..N {
+            for _j in 0..N {
                 let sample: u32 = rng.gen::<u32>() % 2;
                 let mut mu = 0.125;
                 if sample == 0 {

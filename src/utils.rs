@@ -19,17 +19,6 @@ pub fn gussian_torus(
     return f64_to_torus(sample).wrapping_add(mu);
 }
 
-pub fn gussian_torus_vec(
-    mu: &Vec<Torus>,
-    normal_distr: &rand_distr::Normal<f64>,
-    rng: &mut rand::rngs::ThreadRng,
-) -> Vec<Torus> {
-    return mu
-        .iter()
-        .map(|&e| gussian_torus(e, normal_distr, rng))
-        .collect();
-}
-
 pub fn gussian_f64(
     mu: f64,
     normal_distr: &rand_distr::Normal<f64>,
@@ -73,5 +62,16 @@ mod tests {
 
         let torus2 = gussian_torus_vec(&vec![12, 11], &normal, &mut rng);
         assert_eq!(torus2.len(), 2);
+    }
+
+    fn gussian_torus_vec(
+        mu: &Vec<Torus>,
+        normal_distr: &rand_distr::Normal<f64>,
+        rng: &mut rand::rngs::ThreadRng,
+    ) -> Vec<Torus> {
+        return mu
+            .iter()
+            .map(|&e| gussian_torus(e, normal_distr, rng))
+            .collect();
     }
 }
