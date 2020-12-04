@@ -76,66 +76,22 @@ pub fn trgswSymEncrypt(
     return trgsw;
 }
 
-pub fn external_product(
-    trgsw: &TRGSWLv1,
-    trlwe: &trlwe::TRLWELv1,
-    cloud_key: &key::CloudKey,
-    plan: &mut mulfft::FFTPlan,
-) -> trlwe::TRLWELv1 {
-    let dec_a = decomposition(&trlwe.a, cloud_key);
-    let dec_b = decomposition(&trlwe.b, cloud_key);
-    let mut res = trlwe::TRLWELv1::new();
-
-    const L: usize = params::trgsw_lv1::L;
-    for i in 0..L {
-        let tmp = plan.spqlios.poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].a);
-        res.a
-            .iter_mut()
-            .zip(tmp.iter())
-            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
-
-        let tmp = plan.spqlios.poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].a);
-        res.a
-            .iter_mut()
-            .zip(tmp.iter())
-            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
-
-        let tmp = plan.spqlios.poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].b);
-        res.b
-            .iter_mut()
-            .zip(tmp.iter())
-            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
-
-        let tmp = plan.spqlios.poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].b);
-        res.b
-            .iter_mut()
-            .zip(tmp.iter())
-            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
-    }
-
-    return res;
-}
-
 pub fn external_product_with_fft(
     trgsw_fft: &TRGSWLv1FFT,
     trlwe: &trlwe::TRLWELv1,
     cloud_key: &key::CloudKey,
     plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
-    let dec_a = decomposition(&trlwe.a, cloud_key);
-    let dec_b = decomposition(&trlwe.b, cloud_key);
+    let dec = decomposition(&trlwe, cloud_key);
 
     let mut out_a_fft = [0.0f64; 1024];
     let mut out_b_fft = [0.0f64; 1024];
 
     const L: usize = params::trgsw_lv1::L;
-    for i in 0..L {
-        let dec_a_fft = plan.spqlios.ifft_1024(&dec_a[i]);
-        let dec_b_fft = plan.spqlios.ifft_1024(&dec_b[i]);
-        fma_in_fd_1024(&mut out_a_fft, &dec_a_fft, &trgsw_fft.trlwe_fft[i].a);
-        fma_in_fd_1024(&mut out_a_fft, &dec_b_fft, &trgsw_fft.trlwe_fft[i + L].a);
-        fma_in_fd_1024(&mut out_b_fft, &dec_a_fft, &trgsw_fft.trlwe_fft[i].b);
-        fma_in_fd_1024(&mut out_b_fft, &dec_b_fft, &trgsw_fft.trlwe_fft[i + L].b);
+    for i in 0..L * 2 {
+        let dec_fft = plan.spqlios.ifft_1024(&dec[i]);
+        fma_in_fd_1024(&mut out_a_fft, &dec_fft, &trgsw_fft.trlwe_fft[i].a);
+        fma_in_fd_1024(&mut out_b_fft, &dec_fft, &trgsw_fft.trlwe_fft[i].b);
     }
 
     return trlwe::TRLWELv1 {
@@ -153,23 +109,25 @@ fn fma_in_fd_1024(res: &mut [f64; 1024], a: &[f64; 1024], b: &[f64; 1024]) {
 }
 
 pub fn decomposition(
-    a: &[u32; params::trgsw_lv1::N],
+    trlwe: &trlwe::TRLWELv1,
     cloud_key: &key::CloudKey,
-) -> [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L] {
-    let mut res = [[0u32; params::trgsw_lv1::N]; params::trgsw_lv1::L];
-    let mut a_tilda = [0u32; params::trgsw_lv1::N];
-    let offset = cloud_key.decomposition_offset;
-    a_tilda
-        .iter_mut()
-        .zip(a.iter())
-        .for_each(|(at_ref, a_val)| *at_ref = a_val.wrapping_add(offset));
+) -> [[u32; params::trgsw_lv1::N]; params::trgsw_lv1::L * 2] {
+    let mut res = [[0u32; params::trgsw_lv1::N]; params::trgsw_lv1::L * 2];
 
-    for i in 1..(params::trgsw_lv1::L + 1) as u32 {
-        for j in 0..params::trgsw_lv1::N {
-            let tmp = ((a_tilda[j as usize] >> (32 - params::trgsw_lv1::BGBIT * i))
-                & (params::trgsw_lv1::BG - 1))
-                .wrapping_sub(params::trgsw_lv1::BG / 2);
-            res[(i - 1) as usize][j] = tmp;
+    let offset = cloud_key.decomposition_offset;
+    const BGBIT: u32 = params::trgsw_lv1::BGBIT;
+    const mask: u32 = (1 << params::trgsw_lv1::BGBIT) - 1;
+    const half_bg: u32 = 1 << (params::trgsw_lv1::BGBIT - 1);
+
+    for j in 0..params::trgsw_lv1::N {
+        let tmp0 = trlwe.a[j].wrapping_add(offset);
+        let tmp1 = trlwe.b[j].wrapping_add(offset);
+        for i in 0..params::trgsw_lv1::L {
+            res[i][j] = ((tmp0 >> (32 - ((i as u32) + 1) * BGBIT)) & mask).wrapping_sub(half_bg);
+        }
+        for i in 0..params::trgsw_lv1::L {
+            res[i + params::trgsw_lv1::L][j] =
+                ((tmp1 >> (32 - ((i as u32) + 1) * BGBIT)) & mask).wrapping_sub(half_bg);
         }
     }
 
@@ -353,16 +311,16 @@ mod tests {
                 &key.key_lv1,
                 &mut plan,
             );
-            let c_decomp_1 = decomposition(&c.a, &cloud_key);
-            let c_decomp_2 = decomposition(&c.b, &cloud_key);
+            let c_decomp = decomposition(&c, &cloud_key);
             let h_u32 = utils::f64_to_torus_vec(&h);
             let mut res = trlwe::TRLWELv1::new();
             for j in 0..N {
                 let mut tmp0: u32 = 0;
                 let mut tmp1: u32 = 0;
                 for k in 0..params::trgsw_lv1::L {
-                    tmp0 = tmp0.wrapping_add(c_decomp_1[k][j].wrapping_mul(h_u32[k]));
-                    tmp1 = tmp1.wrapping_add(c_decomp_2[k][j].wrapping_mul(h_u32[k]));
+                    tmp0 = tmp0.wrapping_add(c_decomp[k][j].wrapping_mul(h_u32[k]));
+                    tmp1 = tmp1
+                        .wrapping_add(c_decomp[k + params::trgsw_lv1::L][j].wrapping_mul(h_u32[k]));
                 }
                 res.a[j] = tmp0;
                 res.b[j] = tmp1;
@@ -370,52 +328,6 @@ mod tests {
 
             let dec = trlwe::trlweSymDecrypt(&res, &key.key_lv1, &mut plan);
 
-            for j in 0..N {
-                assert_eq!(plain_text[j], dec[j]);
-            }
-        }
-    }
-
-    #[test]
-    fn test_external_product() {
-        const N: usize = params::trgsw_lv1::N;
-        let mut rng = rand::thread_rng();
-        let cloud_key = key::CloudKey::new_no_ksk();
-
-        // Generate 1024bits secret key
-        let key = key::SecretKey::new();
-
-        let mut plan = mulfft::FFTPlan::new(1024);
-        let try_num = 100;
-
-        for i in 0..try_num {
-            let mut plain_text_enc: Vec<f64> = Vec::new();
-            let mut plain_text: Vec<u32> = Vec::new();
-
-            for j in 0..N {
-                let sample: u32 = rng.gen::<u32>() % 2;
-                let mut mu = 0.125;
-                if sample == 0 {
-                    mu = -0.125;
-                }
-                plain_text.push(sample);
-                plain_text_enc.push(mu);
-            }
-
-            let c = trlwe::trlweSymEncrypt(
-                &plain_text_enc,
-                params::trlwe_lv1::ALPHA,
-                &key.key_lv1,
-                &mut plan,
-            );
-            let p = trlwe::trlweSymDecrypt(&c, &key.key_lv1, &mut plan);
-            let trgsw_true = trgswSymEncrypt(1, params::trgsw_lv1::ALPHA, &key.key_lv1, &mut plan);
-            let ext_c = external_product(&trgsw_true, &c, &cloud_key, &mut plan);
-            let dec = trlwe::trlweSymDecrypt(&ext_c, &key.key_lv1, &mut plan);
-
-            for j in 0..N {
-                assert_eq!(plain_text[j], p[j]);
-            }
             for j in 0..N {
                 assert_eq!(plain_text[j], dec[j]);
             }
