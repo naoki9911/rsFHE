@@ -21,6 +21,21 @@ impl TRLWELv1 {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct TRLWELv1FFT {
+    pub a: [f64; params::trlwe_lv1::N],
+    pub b: [f64; params::trlwe_lv1::N],
+}
+
+impl TRLWELv1FFT {
+    pub fn new(trlwe: &TRLWELv1, plan: &mut mulfft::FFTPlan) -> TRLWELv1FFT {
+        return TRLWELv1FFT {
+            a: plan.spqlios.ifft_1024(&trlwe.a),
+            b: plan.spqlios.ifft_1024(&trlwe.b),
+        };
+    }
+}
+
 pub fn trlweSymEncrypt(
     p: &Vec<f64>,
     alpha: f64,

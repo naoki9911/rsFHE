@@ -4,6 +4,7 @@ use crate::params;
 use crate::tlwe;
 use crate::trlwe;
 use crate::utils;
+use std::convert::TryInto;
 
 #[derive(Debug, Copy, Clone)]
 pub struct TRGSWLv1 {
@@ -14,6 +15,25 @@ impl TRGSWLv1 {
     pub fn new() -> TRGSWLv1 {
         return TRGSWLv1 {
             trlwe: [trlwe::TRLWELv1::new(); params::trgsw_lv1::L * 2],
+        };
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct TRGSWLv1FFT {
+    trlwe_fft: [trlwe::TRLWELv1FFT; params::trgsw_lv1::L * 2],
+}
+
+impl TRGSWLv1FFT {
+    pub fn new(trgsw: &TRGSWLv1, plan: &mut mulfft::FFTPlan) -> TRGSWLv1FFT {
+        return TRGSWLv1FFT {
+            trlwe_fft: trgsw
+                .trlwe
+                .iter()
+                .map(|t| trlwe::TRLWELv1FFT::new(t, plan))
+                .collect::<Vec<trlwe::TRLWELv1FFT>>()
+                .try_into()
+                .unwrap(),
         };
     }
 }
@@ -61,30 +81,69 @@ pub fn external_product(
     let mut res = trlwe::TRLWELv1::new();
 
     const L: usize = params::trgsw_lv1::L;
-    const N: usize = params::trgsw_lv1::N;
     for i in 0..L {
         let tmp = plan.spqlios.poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].a);
-        for j in 0..N {
-            res.a[j] = res.a[j].wrapping_add(tmp[j]);
-        }
+        res.a
+            .iter_mut()
+            .zip(tmp.iter())
+            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
 
         let tmp = plan.spqlios.poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].a);
-        for j in 0..N {
-            res.a[j] = res.a[j].wrapping_add(tmp[j]);
-        }
+        res.a
+            .iter_mut()
+            .zip(tmp.iter())
+            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
 
         let tmp = plan.spqlios.poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].b);
-        for j in 0..N {
-            res.b[j] = res.b[j].wrapping_add(tmp[j]);
-        }
+        res.b
+            .iter_mut()
+            .zip(tmp.iter())
+            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
 
         let tmp = plan.spqlios.poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].b);
-        for j in 0..N {
-            res.b[j] = res.b[j].wrapping_add(tmp[j]);
-        }
+        res.b
+            .iter_mut()
+            .zip(tmp.iter())
+            .for_each(|(rref, &tval)| *rref = rref.wrapping_add(tval));
     }
 
     return res;
+}
+
+pub fn external_product_with_fft(
+    trgsw_fft: &TRGSWLv1FFT,
+    trlwe: &trlwe::TRLWELv1,
+    cloud_key: &key::CloudKey,
+    plan: &mut mulfft::FFTPlan,
+) -> trlwe::TRLWELv1 {
+    let dec_a = decomposition(&trlwe.a, cloud_key);
+    let dec_b = decomposition(&trlwe.b, cloud_key);
+
+    let mut out_a_fft = [0.0f64; 1024];
+    let mut out_b_fft = [0.0f64; 1024];
+
+    const L: usize = params::trgsw_lv1::L;
+    for i in 0..L {
+        let dec_a_fft = plan.spqlios.ifft_1024(&dec_a[i]);
+        let dec_b_fft = plan.spqlios.ifft_1024(&dec_b[i]);
+        fma_in_fd_1024(&mut out_a_fft, &dec_a_fft, &trgsw_fft.trlwe_fft[i].a);
+        fma_in_fd_1024(&mut out_a_fft, &dec_b_fft, &trgsw_fft.trlwe_fft[i + L].a);
+        fma_in_fd_1024(&mut out_b_fft, &dec_a_fft, &trgsw_fft.trlwe_fft[i].b);
+        fma_in_fd_1024(&mut out_b_fft, &dec_b_fft, &trgsw_fft.trlwe_fft[i + L].b);
+    }
+
+    return trlwe::TRLWELv1 {
+        a: plan.spqlios.fft_1024(&out_a_fft),
+        b: plan.spqlios.fft_1024(&out_b_fft),
+    };
+}
+
+fn fma_in_fd_1024(res: &mut [f64; 1024], a: &[f64; 1024], b: &[f64; 1024]) {
+    for i in 0..512 {
+        res[i] = a[i + 512] * b[i + 512] - res[i];
+        res[i] = a[i] * b[i] - res[i];
+        res[i + 512] += a[i] * b[i + 512] + a[i + 512] * b[i];
+    }
 }
 
 pub fn decomposition(
@@ -346,6 +405,53 @@ mod tests {
             let p = trlwe::trlweSymDecrypt(&c, &key.key_lv1, &mut plan);
             let trgsw_true = trgswSymEncrypt(1, params::trgsw_lv1::ALPHA, &key.key_lv1, &mut plan);
             let ext_c = external_product(&trgsw_true, &c, &cloud_key, &mut plan);
+            let dec = trlwe::trlweSymDecrypt(&ext_c, &key.key_lv1, &mut plan);
+
+            for j in 0..N {
+                assert_eq!(plain_text[j], p[j]);
+            }
+            for j in 0..N {
+                assert_eq!(plain_text[j], dec[j]);
+            }
+        }
+    }
+
+    #[test] 
+    fn test_external_product_with_fft() {
+        const N: usize = params::trgsw_lv1::N;
+        let mut rng = rand::thread_rng();
+        let cloud_key = key::CloudKey::new_no_ksk();
+
+        // Generate 1024bits secret key
+        let key = key::SecretKey::new();
+
+        let mut plan = mulfft::FFTPlan::new(1024);
+        let try_num = 100;
+
+        for i in 0..try_num {
+            let mut plain_text_enc: Vec<f64> = Vec::new();
+            let mut plain_text: Vec<u32> = Vec::new();
+
+            for j in 0..N {
+                let sample: u32 = rng.gen::<u32>() % 2;
+                let mut mu = 0.125;
+                if sample == 0 {
+                    mu = -0.125;
+                }
+                plain_text.push(sample);
+                plain_text_enc.push(mu);
+            }
+
+            let c = trlwe::trlweSymEncrypt(
+                &plain_text_enc,
+                params::trlwe_lv1::ALPHA,
+                &key.key_lv1,
+                &mut plan,
+            );
+            let p = trlwe::trlweSymDecrypt(&c, &key.key_lv1, &mut plan);
+            let trgsw_true = trgswSymEncrypt(1, params::trgsw_lv1::ALPHA, &key.key_lv1, &mut plan);
+            let trgsw_true_fft = TRGSWLv1FFT::new(&trgsw_true, &mut plan);
+            let ext_c = external_product_with_fft(&trgsw_true_fft, &c, &cloud_key, &mut plan);
             let dec = trlwe::trlweSymDecrypt(&ext_c, &key.key_lv1, &mut plan);
 
             for j in 0..N {

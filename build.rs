@@ -15,6 +15,9 @@ fn main() {
         .file("src/spqlios/spqlios-ifft-fma.s")
         .flag("-std=c++17")
         .flag("-lm")
+        .flag("-Ofast")
+        .flag("-march=native")
+        .flag("-DNDEBUG")
         .include("src")
         .compile("libspqlios.a");
 }
