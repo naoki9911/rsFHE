@@ -63,22 +63,22 @@ pub fn external_product(
     const L: usize = params::trgsw_lv1::L;
     const N: usize = params::trgsw_lv1::N;
     for i in 0..L {
-        let tmp = mulfft::spqlios_poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].a, plan);
+        let tmp = plan.spqlios.poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].a);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::spqlios_poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].a, plan);
+        let tmp = plan.spqlios.poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].a);
         for j in 0..N {
             res.a[j] = res.a[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::spqlios_poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].b, plan);
+        let tmp = plan.spqlios.poly_mul_1024(&dec_a[i], &trgsw.trlwe[i].b);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }
 
-        let tmp = mulfft::spqlios_poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].b, plan);
+        let tmp = plan.spqlios.poly_mul_1024(&dec_b[i], &trgsw.trlwe[i + L].b);
         for j in 0..N {
             res.b[j] = res.b[j].wrapping_add(tmp[j]);
         }

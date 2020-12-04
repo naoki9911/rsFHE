@@ -36,7 +36,7 @@ pub fn trlweSymEncrypt(
     trlwe.b = utils::gussian_f64_vec(p, &normal_distr, &mut rng)
         .try_into()
         .unwrap();
-    let poly_res = mulfft::spqlios_poly_mul_1024(&trlwe.a, key, plan);
+    let poly_res = plan.spqlios.poly_mul_1024(&trlwe.a, key);
 
     for (bref, rval) in trlwe.b.iter_mut().zip(poly_res.iter()) {
         *bref = bref.wrapping_add(*rval);
@@ -50,7 +50,7 @@ pub fn trlweSymDecrypt(
     key: &key::SecretKeyLv1,
     plan: &mut mulfft::FFTPlan,
 ) -> Vec<u32> {
-    let poly_res = mulfft::spqlios_poly_mul_1024(&trlwe.a, key, plan);
+    let poly_res = plan.spqlios.poly_mul_1024(&trlwe.a, key);
     let mut res: Vec<u32> = Vec::new();
     for i in 0..trlwe.a.len() {
         let value = (trlwe.b[i].wrapping_sub(poly_res[i])) as i32;
@@ -84,7 +84,6 @@ mod tests {
     use crate::key;
     use crate::mulfft;
     use crate::params;
-    use crate::tlwe;
     use crate::trlwe;
     use rand::Rng;
 
