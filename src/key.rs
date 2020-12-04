@@ -13,7 +13,7 @@ const TRGSWLV1_BASE: usize = 1 << params::trgsw_lv1::BASEBIT;
 pub type SecretKeyLv0 = [u32; params::tlwe_lv0::N];
 pub type SecretKeyLv1 = [u32; params::tlwe_lv1::N];
 pub type KeySwitchingKey = Vec<tlwe::TLWELv0>;
-pub type BootstrappingKey = Vec<trgsw::TRGSWLv1>;
+pub type BootstrappingKey = Vec<trgsw::TRGSWLv1FFT>;
 
 pub struct SecretKey {
     pub key_lv0: SecretKeyLv0,
@@ -63,7 +63,7 @@ impl CloudKey {
                 tlwe::TLWELv0::new();
                 TRGSWLV1_BASE * TRGSWLV1_IKS_T * TRGSWLV1_N
             ],
-            bootstrapping_key: vec![trgsw::TRGSWLv1::new(); params::tlwe_lv0::N],
+            bootstrapping_key: vec![trgsw::TRGSWLv1FFT::new_dummy(); params::tlwe_lv0::N],
         };
     }
 }
@@ -117,11 +117,14 @@ pub fn gen_bootstrapping_key(
     secret_key: &SecretKey,
     plan: &mut mulfft::FFTPlan,
 ) -> BootstrappingKey {
-    let mut res = vec![trgsw::TRGSWLv1::new(); params::tlwe_lv0::N];
+    let mut res = vec![trgsw::TRGSWLv1FFT::new_dummy(); params::tlwe_lv0::N];
     res.iter_mut()
         .zip(secret_key.key_lv0.iter())
         .for_each(|(rref, &kval)| {
-            *rref = trgsw::trgswSymEncrypt(kval, params::BSK_ALPHA, &secret_key.key_lv1, plan)
+            *rref = trgsw::TRGSWLv1FFT::new(
+                &trgsw::trgswSymEncrypt(kval, params::BSK_ALPHA, &secret_key.key_lv1, plan),
+                plan,
+            )
         });
     return res;
 }

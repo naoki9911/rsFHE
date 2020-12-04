@@ -34,6 +34,13 @@ impl TRLWELv1FFT {
             b: plan.spqlios.ifft_1024(&trlwe.b),
         };
     }
+
+    pub fn new_dummy() -> TRLWELv1FFT {
+        return TRLWELv1FFT {
+            a: [0.0f64; params::trlwe_lv1::N],
+            b: [0.0f64; params::trlwe_lv1::N],
+        };
+    }
 }
 
 pub fn trlweSymEncrypt(

@@ -36,6 +36,12 @@ impl TRGSWLv1FFT {
                 .unwrap(),
         };
     }
+
+    pub fn new_dummy() -> TRGSWLv1FFT {
+        return TRGSWLv1FFT {
+            trlwe_fft: [trlwe::TRLWELv1FFT::new_dummy(); params::trgsw_lv1::L * 2],
+        };
+    }
 }
 
 pub fn trgswSymEncrypt(
@@ -174,7 +180,7 @@ pub fn decomposition(
 pub fn cmux(
     in1: &trlwe::TRLWELv1,
     in2: &trlwe::TRLWELv1,
-    cond: &TRGSWLv1,
+    cond: &TRGSWLv1FFT,
     cloud_key: &key::CloudKey,
     plan: &mut mulfft::FFTPlan,
 ) -> trlwe::TRLWELv1 {
@@ -185,7 +191,7 @@ pub fn cmux(
         tmp.b[i] = in2.b[i].wrapping_sub(in1.b[i]);
     }
 
-    let tmp2 = external_product(cond, &tmp, cloud_key, plan);
+    let tmp2 = external_product_with_fft(cond, &tmp, cloud_key, plan);
     let mut res = trlwe::TRLWELv1::new();
     for i in 0..N {
         res.a[i] = tmp2.a[i].wrapping_add(in1.a[i]);
@@ -416,7 +422,7 @@ mod tests {
         }
     }
 
-    #[test] 
+    #[test]
     fn test_external_product_with_fft() {
         const N: usize = params::trgsw_lv1::N;
         let mut rng = rand::thread_rng();
@@ -501,8 +507,10 @@ mod tests {
             let c2 = trlwe::trlweSymEncrypt(&plain_text_enc_2, ALPHA, &key.key_lv1, &mut plan);
             let trgsw_true = trgswSymEncrypt(1, ALPHA, &key.key_lv1, &mut plan);
             let trgsw_false = trgswSymEncrypt(0, ALPHA, &key.key_lv1, &mut plan);
-            let enc_1 = cmux(&c1, &c2, &trgsw_false, &cloud_key, &mut plan);
-            let enc_2 = cmux(&c1, &c2, &trgsw_true, &cloud_key, &mut plan);
+            let trgsw_true_fft = TRGSWLv1FFT::new(&trgsw_true, &mut plan);
+            let trgsw_false_fft = TRGSWLv1FFT::new(&trgsw_false, &mut plan);
+            let enc_1 = cmux(&c1, &c2, &trgsw_false_fft, &cloud_key, &mut plan);
+            let enc_2 = cmux(&c1, &c2, &trgsw_true_fft, &cloud_key, &mut plan);
             let dec_1 = trlwe::trlweSymDecrypt(&enc_1, &key.key_lv1, &mut plan);
             let dec_2 = trlwe::trlweSymDecrypt(&enc_2, &key.key_lv1, &mut plan);
             for j in 0..N {
