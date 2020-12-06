@@ -122,7 +122,7 @@ pub fn gen_bootstrapping_key(
         .zip(secret_key.key_lv0.iter())
         .for_each(|(rref, &kval)| {
             *rref = trgsw::TRGSWLv1FFT::new(
-                &trgsw::trgswSymEncrypt(kval, params::BSK_ALPHA, &secret_key.key_lv1, plan),
+                &trgsw::TRGSWLv1::encrypt_torus(kval, params::BSK_ALPHA, &secret_key.key_lv1, plan),
                 plan,
             )
         });
