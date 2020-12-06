@@ -18,33 +18,32 @@ impl TRGSWLv1 {
         };
     }
 
-pub fn encrypt_torus(
-    p: u32,
-    alpha: f64,
-    key: &key::SecretKeyLv1,
-    plan: &mut mulfft::FFTPlan,
-) -> Self {
-    let mut p_f64: Vec<f64> = Vec::new();
-    const L: usize = params::trgsw_lv1::L;
-    for i in 0..L {
-        p_f64.push((params::trgsw_lv1::BG as f64).powf(((1 + i) as f64) * -1.0));
+    pub fn encrypt_torus(
+        p: u32,
+        alpha: f64,
+        key: &key::SecretKeyLv1,
+        plan: &mut mulfft::FFTPlan,
+    ) -> Self {
+        let mut p_f64: Vec<f64> = Vec::new();
+        const L: usize = params::trgsw_lv1::L;
+        for i in 0..L {
+            p_f64.push((params::trgsw_lv1::BG as f64).powf(((1 + i) as f64) * -1.0));
+        }
+        let p_torus = utils::f64_to_torus_vec(&p_f64);
+        let plain_zero: Vec<f64> = vec![0.0f64; params::trgsw_lv1::N];
+
+        let mut trgsw = TRGSWLv1::new();
+        trgsw
+            .trlwe
+            .iter_mut()
+            .for_each(|e| *e = trlwe::TRLWELv1::encrypt_f64(&plain_zero, alpha, key, plan));
+
+        for i in 0..L {
+            trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
+            trgsw.trlwe[i + L].b[0] = trgsw.trlwe[i + L].b[0].wrapping_add(p * p_torus[i]);
+        }
+        return trgsw;
     }
-    let p_torus = utils::f64_to_torus_vec(&p_f64);
-    let plain_zero: Vec<f64> = vec![0.0f64; params::trgsw_lv1::N];
-
-    let mut trgsw = TRGSWLv1::new();
-    trgsw
-        .trlwe
-        .iter_mut()
-        .for_each(|e| *e = trlwe::TRLWELv1::encrypt_f64(&plain_zero, alpha, key, plan));
-
-    for i in 0..L {
-        trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
-        trgsw.trlwe[i + L].b[0] = trgsw.trlwe[i + L].b[0].wrapping_add(p * p_torus[i]);
-    }
-    return trgsw;
-}
-
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -351,7 +350,8 @@ mod tests {
                 &mut plan,
             );
             let p = c.decrypt_bool(&key.key_lv1, &mut plan);
-            let trgsw_true = TRGSWLv1::encrypt_torus(1, params::trgsw_lv1::ALPHA, &key.key_lv1, &mut plan);
+            let trgsw_true =
+                TRGSWLv1::encrypt_torus(1, params::trgsw_lv1::ALPHA, &key.key_lv1, &mut plan);
             let trgsw_true_fft = TRGSWLv1FFT::new(&trgsw_true, &mut plan);
             let ext_c = external_product_with_fft(&trgsw_true_fft, &c, &cloud_key, &mut plan);
             let dec = ext_c.decrypt_bool(&key.key_lv1, &mut plan);
