@@ -70,6 +70,7 @@ impl Spqlios {
         return *res;
     }
 
+    #[allow(dead_code)]
     pub fn ifft(&mut self, input: &Vec<u32>) -> Vec<f64> {
         let mut res: Vec<f64> = vec![0.0f64; self.n];
         unsafe {
@@ -78,6 +79,7 @@ impl Spqlios {
         return res;
     }
 
+    #[allow(dead_code)]
     pub fn fft(&mut self, input: &Vec<f64>) -> Vec<u32> {
         let mut res: Vec<u32> = vec![0u32; self.n];
         unsafe {
@@ -86,6 +88,7 @@ impl Spqlios {
         return res;
     }
 
+    #[allow(dead_code)]
     pub fn poly_mul(&mut self, a: &Vec<u32>, b: &Vec<u32>) -> Vec<u32> {
         let a_ifft = self.ifft(a);
         let b_ifft = self.ifft(b);

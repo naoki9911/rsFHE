@@ -67,7 +67,7 @@ pub fn trgswSymEncrypt(
     trgsw
         .trlwe
         .iter_mut()
-        .for_each(|e| *e = trlwe::trlweSymEncrypt(&plain_zero, alpha, key, plan));
+        .for_each(|e| *e = trlwe::TRLWELv1::encrypt_f64(&plain_zero, alpha, key, plan));
 
     for i in 0..L {
         trgsw.trlwe[i].a[0] = trgsw.trlwe[i].a[0].wrapping_add(p * p_torus[i]);
@@ -292,21 +292,15 @@ mod tests {
         }
 
         for i in 0..try_num {
-            let mut plain_text_enc: Vec<f64> = Vec::new();
-            let mut plain_text: Vec<u32> = Vec::new();
+            let mut plain_text: Vec<bool> = Vec::new();
 
             for j in 0..N {
-                let sample: u32 = rng.gen::<u32>() % 2;
-                let mut mu = 0.125;
-                if sample == 0 {
-                    mu = -0.125;
-                }
+                let sample = rng.gen::<bool>();
                 plain_text.push(sample);
-                plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(
-                &plain_text_enc,
+            let c = trlwe::TRLWELv1::encrypt_bool(
+                &plain_text,
                 params::trlwe_lv1::ALPHA,
                 &key.key_lv1,
                 &mut plan,
@@ -326,7 +320,7 @@ mod tests {
                 res.b[j] = tmp1;
             }
 
-            let dec = trlwe::trlweSymDecrypt(&res, &key.key_lv1, &mut plan);
+            let dec = res.decrypt_bool(&key.key_lv1, &mut plan);
 
             for j in 0..N {
                 assert_eq!(plain_text[j], dec[j]);
@@ -347,30 +341,24 @@ mod tests {
         let try_num = 100;
 
         for i in 0..try_num {
-            let mut plain_text_enc: Vec<f64> = Vec::new();
-            let mut plain_text: Vec<u32> = Vec::new();
+            let mut plain_text: Vec<bool> = Vec::new();
 
             for j in 0..N {
-                let sample: u32 = rng.gen::<u32>() % 2;
-                let mut mu = 0.125;
-                if sample == 0 {
-                    mu = -0.125;
-                }
+                let sample = rng.gen::<bool>();
                 plain_text.push(sample);
-                plain_text_enc.push(mu);
             }
 
-            let c = trlwe::trlweSymEncrypt(
-                &plain_text_enc,
+            let c = trlwe::TRLWELv1::encrypt_bool(
+                &plain_text,
                 params::trlwe_lv1::ALPHA,
                 &key.key_lv1,
                 &mut plan,
             );
-            let p = trlwe::trlweSymDecrypt(&c, &key.key_lv1, &mut plan);
+            let p = c.decrypt_bool(&key.key_lv1, &mut plan);
             let trgsw_true = trgswSymEncrypt(1, params::trgsw_lv1::ALPHA, &key.key_lv1, &mut plan);
             let trgsw_true_fft = TRGSWLv1FFT::new(&trgsw_true, &mut plan);
             let ext_c = external_product_with_fft(&trgsw_true_fft, &c, &cloud_key, &mut plan);
-            let dec = trlwe::trlweSymDecrypt(&ext_c, &key.key_lv1, &mut plan);
+            let dec = ext_c.decrypt_bool(&key.key_lv1, &mut plan);
 
             for j in 0..N {
                 assert_eq!(plain_text[j], p[j]);
@@ -391,40 +379,28 @@ mod tests {
         let mut plan = mulfft::FFTPlan::new(N);
         let try_num = 100;
         for i in 0..try_num {
-            let mut plain_text_enc_1: Vec<f64> = Vec::new();
-            let mut plain_text_enc_2: Vec<f64> = Vec::new();
-            let mut plain_text_1: Vec<u32> = Vec::new();
-            let mut plain_text_2: Vec<u32> = Vec::new();
+            let mut plain_text_1: Vec<bool> = Vec::new();
+            let mut plain_text_2: Vec<bool> = Vec::new();
 
             for j in 0..N {
-                let sample: u32 = rng.gen::<u32>() % 2;
-                let mut mu = 0.125;
-                if sample == 0 {
-                    mu = -0.125;
-                }
+                let sample = rng.gen::<bool>();
                 plain_text_1.push(sample);
-                plain_text_enc_1.push(mu);
             }
             for j in 0..N {
-                let sample: u32 = rng.gen::<u32>() % 2;
-                let mut mu = 0.125;
-                if sample == 0 {
-                    mu = -0.125;
-                }
+                let sample = rng.gen::<bool>();
                 plain_text_2.push(sample);
-                plain_text_enc_2.push(mu);
             }
             const ALPHA: f64 = params::trgsw_lv1::ALPHA;
-            let c1 = trlwe::trlweSymEncrypt(&plain_text_enc_1, ALPHA, &key.key_lv1, &mut plan);
-            let c2 = trlwe::trlweSymEncrypt(&plain_text_enc_2, ALPHA, &key.key_lv1, &mut plan);
+            let c1 = trlwe::TRLWELv1::encrypt_bool(&plain_text_1, ALPHA, &key.key_lv1, &mut plan);
+            let c2 = trlwe::TRLWELv1::encrypt_bool(&plain_text_2, ALPHA, &key.key_lv1, &mut plan);
             let trgsw_true = trgswSymEncrypt(1, ALPHA, &key.key_lv1, &mut plan);
             let trgsw_false = trgswSymEncrypt(0, ALPHA, &key.key_lv1, &mut plan);
             let trgsw_true_fft = TRGSWLv1FFT::new(&trgsw_true, &mut plan);
             let trgsw_false_fft = TRGSWLv1FFT::new(&trgsw_false, &mut plan);
             let enc_1 = cmux(&c1, &c2, &trgsw_false_fft, &cloud_key, &mut plan);
             let enc_2 = cmux(&c1, &c2, &trgsw_true_fft, &cloud_key, &mut plan);
-            let dec_1 = trlwe::trlweSymDecrypt(&enc_1, &key.key_lv1, &mut plan);
-            let dec_2 = trlwe::trlweSymDecrypt(&enc_2, &key.key_lv1, &mut plan);
+            let dec_1 = enc_1.decrypt_bool(&key.key_lv1, &mut plan);
+            let dec_2 = enc_2.decrypt_bool(&key.key_lv1, &mut plan);
             for j in 0..N {
                 assert_eq!(plain_text_1[j], dec_1[j]);
                 assert_eq!(plain_text_2[j], dec_2[j]);
